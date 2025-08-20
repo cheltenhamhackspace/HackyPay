@@ -235,11 +235,6 @@ class HackyPayApp {
             return;
         }
 
-        if (price < 1.00) {
-            alert('Minimum price is £1.00');
-            return;
-        }
-        
         const item = {
             item_type: this.currentItemType.name,
             price: price,
@@ -321,6 +316,16 @@ class HackyPayApp {
         }
         
         const total = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        if (total < 1.00) {
+            alert('Minimum total price must be £1');
+            return;
+        }
+
+        if (total > 50.00) {
+            alert('Maximum total price is £50. Just so you dont empty the bank');
+            return;
+        }
         
         // Prepare checkout request
         const checkoutRequest = {
