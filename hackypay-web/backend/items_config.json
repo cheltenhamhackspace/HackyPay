@@ -1,0 +1,221 @@
+{
+  "item_types": [
+    {
+      "id": "food_drink",
+      "name": "Food & Drink",
+      "icon": "🍕",
+      "description": "Snacks, drinks, and food items",
+      "enabled": true
+    },
+    {
+      "id": "laser_time",
+      "name": "Laser Time",
+      "icon": "⚡",
+      "description": "Laser cutter usage time (per hour)",
+      "enabled": true
+    },
+    {
+      "id": "laser_materials",
+      "name": "Laser Materials",
+      "icon": "📦",
+      "description": "Acrylic, wood, cardboard for laser cutting",
+      "enabled": true
+    },
+    {
+      "id": "printer_time",
+      "name": "3D Printer Time",
+      "icon": "🖨️",
+      "description": "3D printer usage time and filament",
+      "enabled": true
+    },
+    {
+      "id": "electronics",
+      "name": "Electronics",
+      "icon": "🔌",
+      "description": "Arduino, Raspberry Pi, sensors, components",
+      "enabled": true
+    },
+    {
+      "id": "workshop_access",
+      "name": "Workshop Access",
+      "icon": "🔧",
+      "description": "Day pass for workshop and tool access",
+      "enabled": false
+    },
+    {
+      "id": "cnc_time",
+      "name": "CNC Machine Time",
+      "icon": "⚙️",
+      "description": "CNC router/mill usage time",
+      "enabled": true
+    },
+    {
+      "id": "soldering_supplies",
+      "name": "Soldering Supplies",
+      "icon": "🔥",
+      "description": "Solder, flux, desoldering braid",
+      "enabled": false
+    },
+    {
+      "id": "pcb_fabrication",
+      "name": "PCB Fabrication",
+      "icon": "💾",
+      "description": "Custom PCB manufacturing service",
+      "enabled": false
+    },
+    {
+      "id": "vinyl_cutting",
+      "name": "Vinyl Cutting",
+      "icon": "✂️",
+      "description": "Vinyl cutter usage and materials",
+      "enabled": false
+    },
+    {
+      "id": "textiles",
+      "name": "Textiles & Sewing",
+      "icon": "🧵",
+      "description": "Fabric, thread, sewing machine time",
+      "enabled": false
+    },
+    {
+      "id": "woodworking",
+      "name": "Woodworking",
+      "icon": "🪵",
+      "description": "Wood materials and tool usage",
+      "enabled": true
+    },
+    {
+      "id": "metalworking",
+      "name": "Metalworking",
+      "icon": "🔨",
+      "description": "Metal stock, welding, machining",
+      "enabled": true
+    },
+    {
+      "id": "ceramics_pottery",
+      "name": "Ceramics & Pottery",
+      "icon": "🏺",
+      "description": "Clay, glazes, kiln firing time",
+      "enabled": false
+    },
+    {
+      "id": "resin_printing",
+      "name": "Resin 3D Printing",
+      "icon": "🧪",
+      "description": "SLA/DLP printer time and resin",
+      "enabled": false
+    },
+    {
+      "id": "embroidery",
+      "name": "Embroidery Machine",
+      "icon": "🪡",
+      "description": "Machine embroidery time and thread",
+      "enabled": false
+    },
+    {
+      "id": "screen_printing",
+      "name": "Screen Printing",
+      "icon": "🎨",
+      "description": "Screens, inks, squeegees",
+      "enabled": false
+    },
+    {
+      "id": "photography",
+      "name": "Photography Studio",
+      "icon": "📸",
+      "description": "Studio time, lighting, backdrops",
+      "enabled": false
+    },
+    {
+      "id": "casting_molding",
+      "name": "Casting & Molding",
+      "icon": "🏭",
+      "description": "Silicone, resin, casting materials",
+      "enabled": false
+    },
+    {
+      "id": "training_classes",
+      "name": "Training & Classes",
+      "icon": "🎓",
+      "description": "Equipment training and workshops",
+      "enabled": false
+    },
+    {
+      "id": "storage_lockers",
+      "name": "Storage Lockers",
+      "icon": "🗄️",
+      "description": "Monthly locker rental",
+      "enabled": false
+    },
+    {
+      "id": "membership_fees",
+      "name": "Membership Fees",
+      "icon": "💳",
+      "description": "Monthly or annual membership",
+      "enabled": false
+    },
+    {
+      "id": "guest_passes",
+      "name": "Guest Passes",
+      "icon": "🎫",
+      "description": "Day passes for non-members",
+      "enabled": false
+    },
+    {
+      "id": "safety_equipment",
+      "name": "Safety Equipment",
+      "icon": "🦺",
+      "description": "Safety glasses, gloves, masks",
+      "enabled": false
+    },
+    {
+      "id": "consumables",
+      "name": "General Consumables",
+      "icon": "📋",
+      "description": "Sandpaper, adhesives, cleaning supplies",
+      "enabled": false
+    },
+    {
+      "id": "event_space",
+      "name": "Event Space Rental",
+      "icon": "🏢",
+      "description": "Meeting room or event space rental",
+      "enabled": false
+    },
+    {
+      "id": "tool_rental",
+      "name": "Tool Rental",
+      "icon": "🔧",
+      "description": "Specialized tool checkout",
+      "enabled": false
+    },
+    {
+      "id": "project_storage",
+      "name": "Project Storage",
+      "icon": "📦",
+      "description": "Temporary project storage space",
+      "enabled": false
+    },
+    {
+      "id": "merchandise",
+      "name": "Hackspace Merch",
+      "icon": "👕",
+      "description": "T-shirts, stickers, branded items",
+      "enabled": false
+    },
+    {
+      "id": "donations",
+      "name": "Donations",
+      "icon": "💝",
+      "description": "Support the hackspace",
+      "enabled": true
+    }
+  ],
+  "settings": {
+    "max_price": 49.99,
+    "min_price": 0.01,
+    "currency": "GBP",
+    "currency_symbol": "£",
+    "decimal_places": 2
+  }
+}
