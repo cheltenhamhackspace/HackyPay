@@ -10,8 +10,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_settings
 from models import CheckoutRequest, PaymentResponse
+from security import get_secure_logger, security_filter
 
-logger = logging.getLogger(__name__)
+logger = get_secure_logger(__name__)
 
 class SumUpService:
     def __init__(self):
@@ -21,6 +22,11 @@ class SumUpService:
             "Authorization": f"Bearer {self.settings.sumup_api_token}",
             "Content-Type": "application/json"
         })
+        
+        # Validate that we have the required credentials
+        if not self.settings.sumup_api_token or not self.settings.sumup_merchant_code:
+            logger.error("Missing required SumUp credentials")
+            raise ValueError("SumUp service not properly configured")
     
     def _get_checkout_url(self) -> str:
         """Get the SumUp checkout URL for the configured reader"""
@@ -71,7 +77,12 @@ class SumUpService:
             }
             
             logger.info(f"Processing payment for £{checkout_request.total_amount:.2f} ({amount_in_pence} pence)")
-            logger.debug(f"Payload: {payload}")
+            # Log sanitized payload (never log the full request which might contain sensitive data)
+            safe_payload = {
+                "description": payload["description"],
+                "total_amount": payload["total_amount"]
+            }
+            logger.debug(f"Payment payload: {safe_payload}")
             
             # Make API request to SumUp
             response = self.session.post(
@@ -82,21 +93,33 @@ class SumUpService:
             
             logger.info(f"SumUp API response: {response.status_code}")
             
+            # Never log the full response as it might contain sensitive data
+            if response.status_code not in [200, 201]:
+                # Only log safe error information
+                logger.warning(f"Payment request failed with status {response.status_code}")
+            
             # Handle successful responses
             if response.status_code in [200, 201]:
                 try:
                     response_data = response.json()
                     transaction_id = response_data.get('id', 'unknown')
-                except:
+                    
+                    # Sanitize response data before any potential logging
+                    safe_response_data = security_filter.sanitize_dict(response_data)
+                    
+                except Exception as e:
                     # Some successful responses might not have JSON body
                     transaction_id = None
+                    logger.debug("Response body could not be parsed as JSON")
                 
                 if response.status_code == 201:
                     message = "Payment sent to reader successfully. Please follow instructions on card reader."
                 else:
                     message = "Payment processed successfully!"
                 
-                logger.info(f"Payment successful - Transaction ID: {transaction_id}")
+                # Only log the transaction ID, never the full response
+                safe_transaction_id = transaction_id if transaction_id and transaction_id != 'unknown' else 'generated'
+                logger.info(f"Payment successful - Transaction ID: {safe_transaction_id}")
                 
                 return PaymentResponse(
                     success=True,
@@ -110,15 +133,27 @@ class SumUpService:
                 error_detail = "Unknown error"
                 try:
                     error_data = response.json()
-                    error_detail = error_data.get('message', error_data.get('error', str(error_data)))
-                except:
-                    error_detail = response.text or f"HTTP {response.status_code}"
+                    # Sanitize error data to prevent sensitive information leakage
+                    safe_error_data = security_filter.sanitize_dict(error_data)
+                    error_detail = safe_error_data.get('message', safe_error_data.get('error', 'API error'))
+                except Exception:
+                    error_detail = f"HTTP {response.status_code}"
                 
-                logger.error(f"Payment failed - Status: {response.status_code}, Error: {error_detail}")
+                # Log sanitized error information
+                logger.error(f"Payment failed - Status: {response.status_code}")
+                
+                # Return generic error message to prevent information disclosure
+                user_message = "Payment could not be processed. Please try again or contact support."
+                if response.status_code == 400:
+                    user_message = "Invalid payment request. Please check your cart and try again."
+                elif response.status_code == 402:
+                    user_message = "Payment was declined. Please try a different payment method."
+                elif response.status_code >= 500:
+                    user_message = "Payment service temporarily unavailable. Please try again later."
                 
                 return PaymentResponse(
                     success=False,
-                    message=f"Payment failed: {error_detail}",
+                    message=user_message,
                     status_code=response.status_code
                 )
         
@@ -139,7 +174,9 @@ class SumUpService:
             )
         
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request exception during payment: {e}")
+            # Log sanitized error information
+            safe_error = security_filter.sanitize_string(str(e))
+            logger.error(f"Request exception during payment: {safe_error}")
             return PaymentResponse(
                 success=False,
                 message="Payment request failed. Please try again.",
@@ -147,7 +184,9 @@ class SumUpService:
             )
         
         except Exception as e:
-            logger.error(f"Unexpected error during payment: {e}")
+            # Log sanitized error information
+            safe_error = security_filter.sanitize_string(str(e))
+            logger.error(f"Unexpected error during payment: {safe_error}")
             return PaymentResponse(
                 success=False,
                 message="System error occurred. Please contact support.",
@@ -170,11 +209,13 @@ class SumUpService:
                 "last_checked": datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Error checking reader status: {e}")
+            # Log sanitized error information
+            safe_error = security_filter.sanitize_string(str(e))
+            logger.error(f"Error checking reader status: {safe_error}")
             return {
-                "reader_id": self.settings.sumup_reader_id,
+                "reader_id": "***MASKED***",  # Don't expose reader ID in error responses
                 "online": False,
-                "error": str(e),
+                "error": "Unable to check reader status",
                 "last_checked": datetime.now().isoformat()
             }
 
