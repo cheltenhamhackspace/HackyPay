@@ -230,8 +230,13 @@ class HackyPayApp {
             return;
         }
         
-        if (price > 999.99) {
-            alert('Maximum price is £999.99');
+        if (price > 50.00) {
+            alert('Maximum price is £50.00');
+            return;
+        }
+
+        if (price < 1.00) {
+            alert('Minimum price is £1.00');
             return;
         }
         
