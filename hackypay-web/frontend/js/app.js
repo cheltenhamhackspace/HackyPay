@@ -1,6 +1,6 @@
 class HackyPayApp {
     constructor() {
-        this.apiBaseUrl = 'http://127.0.0.1:8000/api';
+        this.apiBaseUrl = '/api';
         this.cart = [];
         this.currentItemType = null;
         this.currentPrice = '0.00';
@@ -19,15 +19,15 @@ class HackyPayApp {
         this.totalAmount = document.getElementById('totalAmount');
         this.clearCartBtn = document.getElementById('clearCartBtn');
         this.checkoutBtn = document.getElementById('checkoutBtn');
-        
+
         // Item selection
         this.itemTypesGrid = document.getElementById('itemTypesGrid');
-        
+
         // Status elements
         this.statusMessage = document.getElementById('statusMessage');
         this.logContent = document.getElementById('logContent');
         this.systemStatus = document.getElementById('systemStatus');
-        
+
         // Modal elements
         this.itemModal = document.getElementById('itemModal');
         this.modalItemType = document.getElementById('modalItemType');
@@ -35,7 +35,7 @@ class HackyPayApp {
         this.modalClose = document.getElementById('modalClose');
         this.modalCancel = document.getElementById('modalCancel');
         this.modalAdd = document.getElementById('modalAdd');
-        
+
         // Loading overlay
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.loadingText = document.getElementById('loadingText');
@@ -224,14 +224,15 @@ class HackyPayApp {
     
     async addItemToCart() {
         const price = parseFloat(this.currentPrice);
-        
+        const maxPrice = this.settings?.max_price || 49.99;
+
         if (isNaN(price) || price <= 0) {
             alert('Please enter a valid price greater than £0.00');
             return;
         }
-        
-        if (price > 50.00) {
-            alert('Maximum price is £50.00');
+
+        if (price > maxPrice) {
+            alert(`Maximum price is £${maxPrice.toFixed(2)}`);
             return;
         }
 
@@ -240,11 +241,11 @@ class HackyPayApp {
             price: price,
             quantity: 1
         };
-        
+
         this.cart.push(item);
         this.updateCartDisplay();
         this.closeModal();
-        
+
         this.log(`Added ${item.item_type}: £${price.toFixed(2)}`, 'success');
         this.setStatus(`✅ Added ${item.item_type} (£${price.toFixed(2)}) to cart`);
     }
@@ -314,72 +315,209 @@ class HackyPayApp {
             alert('Please add items to your cart before checking out');
             return;
         }
-        
+
         const total = this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const minTotal = this.settings?.min_price || 1.00;
+        const maxTotal = this.settings?.max_price || 49.99;
 
-        if (total < 1.00) {
-            alert('Minimum total price must be £1');
+        if (total < minTotal) {
+            alert(`Minimum total price must be £${minTotal.toFixed(2)}`);
             return;
         }
 
-        if (total > 50.00) {
-            alert('Maximum total price is £50. Just so you dont empty the bank');
+        if (total > maxTotal) {
+            alert(`Maximum total price is £${maxTotal.toFixed(2)}`);
             return;
         }
-        
-        // Prepare checkout request
+
         const checkoutRequest = {
             items: this.cart,
             total_amount: total,
-            description: `Self Checkout: ${this.cart.map(item => 
+            description: `Self Checkout: ${this.cart.map(item =>
                 `${item.item_type} (£${item.price.toFixed(2)})`
             ).join(', ')}`
         };
-        
-        this.showLoading('Processing payment...');
+
         this.checkoutBtn.disabled = true;
         this.checkoutBtn.classList.add('processing');
         this.checkoutBtn.textContent = 'Processing...';
-        
+        this.showLoading('Contacting card reader...');
         this.log(`Processing payment for £${total.toFixed(2)}`);
-        
+
         try {
             const response = await fetch(`${this.apiBaseUrl}/checkout`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(checkoutRequest)
             });
-            
+
             const result = await response.json();
-            
-            if (result.success) {
-                this.log(`✓ Payment successful - Transaction ID: ${result.transaction_id || 'N/A'}`, 'success');
-                this.setStatus(result.message);
-                
-                // Clear cart after successful payment
-                setTimeout(() => {
-                    this.cart = [];
-                    this.updateCartDisplay();
-                    this.setStatus('👆 Select an item type to add to your cart');
-                }, 5000);
-                
-            } else {
+
+            if (!result.success) {
                 this.log(`✗ Payment failed: ${result.message}`, 'error');
                 this.setStatus(`Payment failed: ${result.message}`);
+                this.hideLoading();
+                this._resetCheckoutButton();
+                return;
             }
-            
+
+            this.loadingText.textContent = 'Sent to reader — follow the prompts...';
+            this.setStatus('📟 Checkout sent to card reader');
+
+            await this._pollReaderForPayment(result.client_transaction_id);
+
         } catch (error) {
             this.log(`✗ Payment error: ${error.message}`, 'error');
             this.setStatus('Payment failed. Please try again.');
             console.error('Checkout error:', error);
-        } finally {
             this.hideLoading();
-            this.checkoutBtn.disabled = this.cart.length === 0;
-            this.checkoutBtn.classList.remove('processing');
-            this.checkoutBtn.textContent = '💳 CHECKOUT';
+            this._resetCheckoutButton();
         }
+    }
+
+    async _pollReaderForPayment(clientTransactionId) {
+        const POLL_INTERVAL = 2000;
+        const MAX_POLLS = 60;
+        const STATE_MESSAGES = {
+            'IDLE':               'Reader ready — preparing...',
+            'SELECTING_TIP':      'Select tip amount on reader',
+            'WAITING_FOR_CARD':   '💳 Tap or insert your card',
+            'WAITING_FOR_PIN':    '🔢 Enter your PIN on the reader',
+            'WAITING_FOR_SIGNATURE': '✍️ Sign on the reader',
+            'UPDATING_FIRMWARE':  'Reader updating — please wait...',
+            'UNKNOWN':            'Contacting reader...',
+            'OFFLINE':            'Reader offline — check connection',
+        };
+
+        let wasInPayment = false;
+        let lastState = null;
+
+        for (let i = 0; i < MAX_POLLS; i++) {
+            await this._sleep(POLL_INTERVAL);
+
+            try {
+                const resp = await fetch(`${this.apiBaseUrl}/reader/status`);
+                const status = await resp.json();
+
+                if (!status.online) {
+                    this.loadingText.textContent = 'Reader is offline — check the device';
+                    continue;
+                }
+
+                const state = status.state || 'IDLE';
+                lastState = state;
+
+                const msg = STATE_MESSAGES[state] || `Reader: ${state}`;
+                this.loadingText.textContent = msg;
+                this.setStatus(`📟 ${msg}`);
+
+                if (state === 'WAITING_FOR_CARD' || state === 'WAITING_FOR_PIN' ||
+                    state === 'WAITING_FOR_SIGNATURE' || state === 'SELECTING_TIP') {
+                    wasInPayment = true;
+                }
+
+                if (wasInPayment && state === 'IDLE') {
+                    break;
+                }
+
+            } catch {
+                this.loadingText.textContent = 'Checking reader status...';
+            }
+        }
+
+        this.loadingText.textContent = 'Checking payment result...';
+
+        if (!clientTransactionId) {
+            this.loadingText.textContent = 'Processing complete — check the reader';
+            await this._sleep(4000);
+            this._finishCheckout(true, null, 'Processing complete');
+            return;
+        }
+
+        for (let attempt = 0; attempt < 6; attempt++) {
+            await this._sleep(2000);
+
+            try {
+                const resp = await fetch(
+                    `${this.apiBaseUrl}/transaction/${clientTransactionId}/status`
+                );
+                const tx = await resp.json();
+
+                if (tx.found && tx.status === 'SUCCESSFUL') {
+                    this._finishCheckout(true, tx.transaction_id, 'Payment successful!');
+                    return;
+                }
+
+                if (tx.found && ['FAILED', 'CANCELLED', 'REFUNDED', 'CHARGE_BACK'].includes(tx.status)) {
+                    this._finishCheckout(false, null, tx.status);
+                    return;
+                }
+
+                if (tx.status === 'NOT_FOUND') {
+                    this.loadingText.textContent = 'Transaction cancelled — no payment taken';
+                    await this._sleep(2000);
+this._finishCheckout(false, null, 'UNVERIFIED');
+                    return;
+                }
+
+                if (tx.status === 'UNKNOWN') {
+                    this.loadingText.textContent = 'Cannot verify — check the reader screen';
+                    await this._sleep(2000);
+                    this._finishCheckout(false, null, 'UNVERIFIED');
+                    return;
+                }
+
+                this.loadingText.textContent = 'Waiting for confirmation...';
+            } catch {
+                this.loadingText.textContent = 'Checking result...';
+            }
+        }
+
+        this._finishCheckout(false, null, 'CANCELLED');
+    }
+
+    _finishCheckout(success, transactionId, message) {
+        this.hideLoading();
+        this._resetCheckoutButton();
+
+        if (success) {
+            this.log(`✓ Completed — TX: ${transactionId || 'N/A'}`, 'success');
+            this.setStatus(`✅ ${message}`);
+            this.cart = [];
+            this.updateCartDisplay();
+
+            setTimeout(() => {
+                this.setStatus('👆 Select an item type to add to your cart');
+            }, 6000);
+            return;
+        }
+
+        const status = (message || '').toUpperCase();
+
+        if (status === 'CANCELLED') {
+            this.log('🚫 Transaction cancelled by user', 'info');
+            this.setStatus('🚫 Cancelled — cart kept. You can change items and try again.');
+            return;
+        }
+
+        if (status === 'UNVERIFIED') {
+            this.log('❓ Could not verify payment result', 'info');
+            this.setStatus('❓ Could not verify payment. Check the reader screen.');
+            return;
+        }
+
+        this.log(`✗ ${message}`, 'error');
+        this.setStatus(`Declined — ${message}. Cart kept — you can try again.`);
+    }
+
+    _resetCheckoutButton() {
+        this.checkoutBtn.disabled = this.cart.length === 0;
+        this.checkoutBtn.classList.remove('processing');
+        this.checkoutBtn.textContent = '💳 CHECKOUT';
+    }
+
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
     
     showLoading(text = 'Loading...') {
