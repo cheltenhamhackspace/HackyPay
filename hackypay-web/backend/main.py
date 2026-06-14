@@ -1,40 +1,67 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 import logging
 import time
 from collections import defaultdict
 
 from config import get_settings
 from models import (
-    CheckoutRequest, PaymentResponse, HealthCheck, 
-    ErrorResponse, ReaderStatus, CartItem
+    CheckoutRequest, PaymentResponse, HealthCheck,
+    ErrorResponse, ReaderStatus, CartItem, TransactionStatusResponse
 )
 from services.sumup_service import get_sumup_service, SumUpService
 from services.items_service import get_items_service, ItemsService
 from security import (
-    get_secure_logger, create_safe_error_response, 
+    get_secure_logger, create_safe_error_response,
     sanitize_request_for_logging, add_security_headers,
     validate_environment_security
 )
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = get_secure_logger(__name__)
 
-# Initialize FastAPI app
+settings = get_settings()
+
+request_counts = defaultdict(list)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("HackyPay Self Checkout API starting up...")
+    logger.info(f"Debug mode: {settings.debug}")
+    logger.info(f"Allowed origins: {settings.allowed_origins}")
+
+    security_issues = validate_environment_security()
+    if security_issues:
+        for issue in security_issues:
+            logger.warning(f"Security issue: {issue}")
+
+    try:
+        _ = get_sumup_service()
+        logger.info("SumUp service initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize SumUp service")
+        raise
+
+    yield
+
+    logger.info("HackyPay Self Checkout API shutting down...")
+
+
 app = FastAPI(
     title="HackyPay Self Checkout API",
     description="Secure SumUp-based self checkout system",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
-
-# Get settings
-settings = get_settings()
 
 # Configure CORS
 app.add_middleware(
@@ -116,6 +143,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         user_message=exc.detail if exc.status_code < 500 else "An error occurred processing your request."
     )
 
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
+app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    index_path = FRONTEND_DIR / "index.html"
+    return HTMLResponse(content=index_path.read_text())
+
+
 @app.get("/api/health", response_model=HealthCheck)
 async def health_check():
     """Health check endpoint"""
@@ -129,19 +168,30 @@ async def get_reader_status(sumup_service: SumUpService = Depends(get_sumup_serv
     """Get SumUp reader status"""
     try:
         status_data = sumup_service.check_reader_status()
-        
-        # Don't expose the actual reader ID in responses
+
         return ReaderStatus(
             reader_id="configured" if status_data.get("reader_id") else "not_configured",
             online=status_data["online"],
-            last_seen=status_data.get("last_checked")
+            state=status_data.get("state"),
+            last_seen=status_data.get("last_checked"),
         )
-    except Exception as e:
-        logger.error(f"Error getting reader status")
-        raise HTTPException(
-            status_code=503,
-            detail="Unable to check reader status"
-        )
+    except Exception:
+        logger.warning("Error getting reader status")
+        raise HTTPException(status_code=503, detail="Unable to check reader status")
+
+
+@app.get("/api/transaction/{client_transaction_id}/status", response_model=TransactionStatusResponse)
+async def get_transaction_status(
+    client_transaction_id: str,
+    sumup_service: SumUpService = Depends(get_sumup_service),
+):
+    """Poll for transaction status by client_transaction_id"""
+    try:
+        result = sumup_service.find_transaction_status(client_transaction_id)
+        return TransactionStatusResponse(**result)
+    except Exception:
+        logger.warning("Error looking up transaction status")
+        raise HTTPException(status_code=500, detail="Unable to check transaction status")
 
 @app.post("/api/cart/validate")
 async def validate_cart(items: list[CartItem]):
@@ -260,34 +310,6 @@ async def reload_config(
             status_code=500,
             detail="Error reloading configuration"
         )
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Application startup"""
-    logger.info("HackyPay Self Checkout API starting up...")
-    logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"Allowed origins: {settings.allowed_origins}")
-    
-    # Validate environment security
-    security_issues = validate_environment_security()
-    if security_issues:
-        for issue in security_issues:
-            logger.warning(f"Security issue: {issue}")
-    
-    # Validate configuration
-    try:
-        _ = get_sumup_service()
-        logger.info("SumUp service initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize SumUp service")
-        raise
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown"""
-    logger.info("HackyPay Self Checkout API shutting down...")
 
 if __name__ == "__main__":
     import uvicorn

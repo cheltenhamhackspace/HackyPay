@@ -1,0 +1,32 @@
+[project]
+name = "hackypay"
+version = "1.0.0"
+description = "HackyPay Self Checkout — SumUp-based payment kiosk for hackspaces"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "python-multipart>=0.0.18",
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+hackypay = "main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.28.0",
+]

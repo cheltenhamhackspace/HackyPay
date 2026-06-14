@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import Optional
-from pydantic import validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -56,30 +56,32 @@ class Settings(BaseSettings):
     log_requests: bool = True
     mask_sensitive_logs: bool = True
     
-    @validator('sumup_api_token')
+    @field_validator('sumup_api_token')
+    @classmethod
     def validate_api_token(cls, v):
         if not v or not v.startswith('sup_sk_'):
             raise ValueError('Invalid SumUp API token format')
-        # Additional validation: ensure token has reasonable length
         if len(v) < 20:
             raise ValueError('SumUp API token appears to be too short')
         return v
-    
-    @validator('sumup_merchant_code')
+
+    @field_validator('sumup_merchant_code')
+    @classmethod
     def validate_merchant_code(cls, v):
         if not v or len(v) < 5:
             raise ValueError('Invalid merchant code')
         return v
-    
-    @validator('sumup_reader_id')
+
+    @field_validator('sumup_reader_id')
+    @classmethod
     def validate_reader_id(cls, v):
         if not v or not v.startswith('rdr_'):
             raise ValueError('Invalid reader ID format')
         return v
-    
-    @validator('debug')
+
+    @field_validator('debug')
+    @classmethod
     def validate_debug_mode(cls, v):
-        # Warn if debug mode is enabled
         if v:
             import warnings
             warnings.warn(
@@ -87,10 +89,10 @@ class Settings(BaseSettings):
                 UserWarning
             )
         return v
-    
-    @validator('allowed_origins')
+
+    @field_validator('allowed_origins')
+    @classmethod
     def validate_cors_origins(cls, v):
-        # Ensure CORS origins don't include wildcards in production
         if '*' in v:
             import warnings
             warnings.warn(

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional
 from decimal import Decimal
 
@@ -14,40 +14,49 @@ class ItemsConfig(BaseModel):
     settings: dict
 
 class CartItem(BaseModel):
-    item_type: str  # Changed from enum to string for flexibility
+    item_type: str
     price: Decimal = Field(..., gt=0, le=999.99, description="Price in GBP")
     quantity: int = Field(default=1, gt=0, le=100)
-    
-    @validator('price')
+
+    @field_validator('price')
+    @classmethod
     def validate_price(cls, v):
-        # Ensure price has at most 2 decimal places
         if v.as_tuple().exponent < -2:
             raise ValueError('Price cannot have more than 2 decimal places')
         return v
 
 class CheckoutRequest(BaseModel):
-    items: List[CartItem] = Field(..., min_items=1, max_items=50)
+    items: List[CartItem] = Field(..., min_length=1, max_length=50)
     total_amount: Decimal = Field(..., gt=0, le=9999.99)
     description: Optional[str] = Field(None, max_length=500)
-    
-    @validator('total_amount')
-    def validate_total(cls, v, values):
-        if 'items' in values:
-            calculated_total = sum(item.price * item.quantity for item in values['items'])
-            if abs(calculated_total - v) > Decimal('0.01'):
-                raise ValueError('Total amount does not match sum of items')
-        return v
+
+    @model_validator(mode='after')
+    def validate_total(self):
+        calculated_total = sum(item.price * item.quantity for item in self.items)
+        if abs(calculated_total - self.total_amount) > Decimal('0.01'):
+            raise ValueError('Total amount does not match sum of items')
+        return self
 
 class PaymentResponse(BaseModel):
     success: bool
     transaction_id: Optional[str] = None
+    client_transaction_id: Optional[str] = None
     message: str
     status_code: int
+
 
 class ReaderStatus(BaseModel):
     reader_id: str
     online: bool
+    state: Optional[str] = None
     last_seen: Optional[str] = None
+
+
+class TransactionStatusResponse(BaseModel):
+    found: bool
+    status: Optional[str] = None
+    transaction_id: Optional[str] = None
+    amount: Optional[float] = None
 
 class HealthCheck(BaseModel):
     status: str
