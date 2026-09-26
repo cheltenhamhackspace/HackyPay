@@ -9,7 +9,8 @@ class HackyPayApp {
         this.bindEvents();
         this.loadItemTypes();
         this.checkSystemHealth();
-        
+        this.verifyBrandFont();
+
         this.log('System initialized');
     }
     
@@ -39,6 +40,11 @@ class HackyPayApp {
         // Loading overlay
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.loadingText = document.getElementById('loadingText');
+
+        // Toast + brand font warning
+        this.toast = document.getElementById('toast');
+        this.toastText = document.getElementById('toastText');
+        this.fontWarning = document.getElementById('fontWarning');
     }
     
     bindEvents() {
@@ -71,6 +77,12 @@ class HackyPayApp {
                 this.closeModal();
             }
         });
+
+        // Toast + font warning: tap to dismiss
+        this.toast.addEventListener('click', () => this.hideToast());
+        this.fontWarning.addEventListener('click', () => {
+            this.fontWarning.classList.remove('visible');
+        });
         
         // Keyboard support
         document.addEventListener('keydown', (e) => {
@@ -99,14 +111,19 @@ class HackyPayApp {
             this.settings = data.settings || {};
             this.itemTypes = data.item_types || [];
             
-            this.itemTypesGrid.innerHTML = '';
+            this.itemTypesGrid.textContent = '';
             data.item_types.forEach(itemType => {
                 const button = document.createElement('button');
                 button.className = 'item-type-btn';
-                button.innerHTML = `
-                    <div class="item-icon">${itemType.icon}</div>
-                    <div class="item-name">${itemType.name}</div>
-                `;
+                // Item data comes from the API — build with textContent (XSS-safe)
+                const icon = document.createElement('div');
+                icon.className = 'item-icon';
+                icon.textContent = itemType.icon;
+                const name = document.createElement('div');
+                name.className = 'item-name';
+                name.textContent = itemType.name;
+                button.appendChild(icon);
+                button.appendChild(name);
                 button.title = itemType.description;
                 button.addEventListener('click', () => this.selectItemType(itemType));
                 this.itemTypesGrid.appendChild(button);
@@ -146,13 +163,23 @@ class HackyPayApp {
     selectItemType(itemType) {
         this.currentItemType = itemType;
         this.currentPrice = '0.00';
-        this.modalItemType.innerHTML = `
-            <div class="modal-item-header">
-                <span class="modal-item-icon">${itemType.icon}</span>
-                <span class="modal-item-name">${itemType.name}</span>
-            </div>
-            <div class="modal-item-description">${itemType.description}</div>
-        `;
+        // Item data comes from the API — build with textContent (XSS-safe)
+        this.modalItemType.textContent = '';
+        const itemHeader = document.createElement('div');
+        itemHeader.className = 'modal-item-header';
+        const itemIcon = document.createElement('span');
+        itemIcon.className = 'modal-item-icon';
+        itemIcon.textContent = itemType.icon;
+        const itemName = document.createElement('span');
+        itemName.className = 'modal-item-name';
+        itemName.textContent = itemType.name;
+        itemHeader.appendChild(itemIcon);
+        itemHeader.appendChild(itemName);
+        const itemDescription = document.createElement('div');
+        itemDescription.className = 'modal-item-description';
+        itemDescription.textContent = itemType.description;
+        this.modalItemType.appendChild(itemHeader);
+        this.modalItemType.appendChild(itemDescription);
         this.priceDisplay.textContent = '£0.00';
         this.showModal();
         this.log(`Selected item type: ${itemType.name}`);
@@ -227,12 +254,12 @@ class HackyPayApp {
         const maxPrice = this.settings?.max_price || 49.99;
 
         if (isNaN(price) || price <= 0) {
-            alert('Please enter a valid price greater than £0.00');
+            this.showToast('Please enter a valid price greater than £0.00', 'error');
             return;
         }
 
         if (price > maxPrice) {
-            alert(`Maximum price is £${maxPrice.toFixed(2)}`);
+            this.showToast(`Maximum price is £${maxPrice.toFixed(2)}`, 'error');
             return;
         }
 
@@ -261,7 +288,7 @@ class HackyPayApp {
     
     clearCart() {
         if (this.cart.length === 0) {
-            alert('Cart is already empty');
+            this.showToast('Cart is already empty');
             return;
         }
         
@@ -272,26 +299,45 @@ class HackyPayApp {
     }
     
     updateCartDisplay() {
-        // Update cart items display
+        // Update cart items display (item names come from the API — textContent, XSS-safe)
+        this.cartItems.textContent = '';
         if (this.cart.length === 0) {
-            this.cartItems.innerHTML = `
-                <div class="empty-cart-message">
-                    <p>Your cart is empty</p>
-                    <p class="empty-cart-subtitle">Add items to get started</p>
-                </div>
-            `;
+            const empty = document.createElement('div');
+            empty.className = 'empty-cart-message';
+            const message = document.createElement('p');
+            message.textContent = 'Your cart is empty';
+            const subtitle = document.createElement('p');
+            subtitle.className = 'empty-cart-subtitle';
+            subtitle.textContent = 'Add items to get started';
+            empty.appendChild(message);
+            empty.appendChild(subtitle);
+            this.cartItems.appendChild(empty);
         } else {
-            this.cartItems.innerHTML = this.cart.map((item, index) => `
-                <div class="cart-item">
-                    <div class="cart-item-info">
-                        <div class="cart-item-name">${item.item_type}</div>
-                        <div class="cart-item-price">£${item.price.toFixed(2)}</div>
-                    </div>
-                    <button class="remove-item-btn" onclick="app.removeItemFromCart(${index})">
-                        🗑️
-                    </button>
-                </div>
-            `).join('');
+            this.cart.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = 'cart-item';
+
+                const info = document.createElement('div');
+                info.className = 'cart-item-info';
+                const name = document.createElement('div');
+                name.className = 'cart-item-name';
+                name.textContent = item.item_type;
+                const price = document.createElement('div');
+                price.className = 'cart-item-price';
+                price.textContent = `£${item.price.toFixed(2)}`;
+                info.appendChild(name);
+                info.appendChild(price);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-item-btn';
+                removeBtn.setAttribute('aria-label', `Remove ${item.item_type}`);
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', () => this.removeItemFromCart(index));
+
+                row.appendChild(info);
+                row.appendChild(removeBtn);
+                this.cartItems.appendChild(row);
+            });
         }
         
         // Update total
@@ -312,7 +358,7 @@ class HackyPayApp {
     
     async processCheckout() {
         if (this.cart.length === 0) {
-            alert('Please add items to your cart before checking out');
+            this.showToast('Please add items to your cart before checking out', 'error');
             return;
         }
 
@@ -321,12 +367,12 @@ class HackyPayApp {
         const maxTotal = this.settings?.max_price || 49.99;
 
         if (total < minTotal) {
-            alert(`Minimum total price must be £${minTotal.toFixed(2)}`);
+            this.showToast(`Minimum total price must be £${minTotal.toFixed(2)}`, 'error');
             return;
         }
 
         if (total > maxTotal) {
-            alert(`Maximum total price is £${maxTotal.toFixed(2)}`);
+            this.showToast(`Maximum total price is £${maxTotal.toFixed(2)}`, 'error');
             return;
         }
 
@@ -513,7 +559,7 @@ this._finishCheckout(false, null, 'UNVERIFIED');
     _resetCheckoutButton() {
         this.checkoutBtn.disabled = this.cart.length === 0;
         this.checkoutBtn.classList.remove('processing');
-        this.checkoutBtn.textContent = '💳 CHECKOUT';
+        this.checkoutBtn.textContent = 'CHECKOUT';
     }
 
     _sleep(ms) {
@@ -546,6 +592,55 @@ this._finishCheckout(false, null, 'UNVERIFIED');
         while (this.logContent.children.length > 50) {
             this.logContent.removeChild(this.logContent.firstChild);
         }
+    }
+
+    showToast(message, type = 'info') {
+        this.toastText.textContent = message;
+        this.toast.classList.remove('toast-success', 'toast-error');
+        if (type === 'success') {
+            this.toast.classList.add('toast-success');
+        } else if (type === 'error') {
+            this.toast.classList.add('toast-error');
+        }
+
+        // Restart the reveal transition if a toast is already showing
+        this.toast.classList.remove('visible');
+        void this.toast.offsetWidth;
+        this.toast.classList.add('visible');
+
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => this.hideToast(), 3500);
+    }
+
+    hideToast() {
+        clearTimeout(this._toastTimer);
+        this.toast.classList.remove('visible');
+    }
+
+    // Brand font gate: warn visibly when Dunbar Low is not available and the
+    // fallback stack is rendering instead (kiosk must never fail silently).
+    verifyBrandFont() {
+        if (!document.fonts || !document.fonts.ready) {
+            this.showFontWarning();
+            return;
+        }
+
+        document.fonts.ready.then(() => {
+            let brandFontLoaded = false;
+            try {
+                brandFontLoaded = document.fonts.check('bold 1em "Dunbar Low"');
+            } catch {
+                brandFontLoaded = false;
+            }
+            if (!brandFontLoaded) {
+                this.showFontWarning();
+            }
+        });
+    }
+
+    showFontWarning() {
+        this.fontWarning.classList.add('visible');
+        this.log('Brand font not found — using fallback display', 'error');
     }
 }
 
