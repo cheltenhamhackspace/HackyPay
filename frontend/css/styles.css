@@ -1,0 +1,1000 @@
+/* ============================================================
+   HackyPay — Cheltenham Hackspace Self Checkout
+   Brand: Hack Yellow #FED202 (accent only) + Ink #141414 on
+   Paper #FAFAF7. Type: Dunbar Low Bold (self-hosted).
+
+   Built portrait-first for Raspberry Pi Touch Display 2
+   (720×1280). Desktop (min-width: 721px) is functional but
+   secondary. Offline: no external requests.
+   ============================================================ */
+
+/* Brand font — self-hosted, no CDN
+   ------------------------------------------------------------ */
+@font-face {
+    font-family: 'Dunbar Low';
+    src: url('../assets/fonts/dunbar-low-bold.woff2') format('woff2'),
+         url('../assets/fonts/dunbar-low-bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Reset
+   ------------------------------------------------------------ */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Design tokens — Cheltenham Hackspace brand guide
+   ------------------------------------------------------------ */
+:root {
+    /* Palette */
+    --yellow:        #FED202;  /* Hack Yellow — accent ONLY, never text on white/paper */
+    --ink:           #141414;  /* Ink Black — text & structure */
+    --paper:         #FAFAF7;  /* page background */
+    --surface:       #FFFFFF;  /* cards / surfaces */
+    --grey-mid:      #5A5A5A;  /* secondary text */
+    --grey-hairline: #CDCDC7;  /* borders & dividers */
+
+    /* Spacing scale */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.25rem;
+    --space-2xl: 1.5rem;
+
+    /* Touch target minimum (44px required, 52px preferred) */
+    --touch-min: 52px;
+
+    /* Radii */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+
+    /* Motion — restrained (Pi GPU): opacity/transform only */
+    --speed: 200ms;
+    --speed-fast: 150ms;
+}
+
+/* Base
+   ------------------------------------------------------------ */
+html {
+    height: 100%;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: 'Dunbar Low', 'Arial Black', 'Archivo Black', Arial, sans-serif;
+    font-weight: 700;
+    background: var(--paper);
+    color: var(--ink);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+button {
+    font-family: inherit;
+    font-weight: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+}
+
+.app-container {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ------------------------------------------------------------
+   HEADER — logo lockup + thick black rule
+   ------------------------------------------------------------ */
+.header {
+    background: var(--paper);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 4px solid var(--ink);
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* 25% clear space around a 48px badge */
+}
+
+.brand-mark {
+    width: 48px;
+    height: 48px;
+    display: block;
+    flex-shrink: 0;
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.app-title {
+    font-size: 1.35rem;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.brand-tagline {
+    font-size: 0.65rem;
+    color: var(--grey-mid);
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* System status pill — square indicator (brand motif), text carries meaning */
+.system-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    background: var(--ink);
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+}
+
+.status-indicator.offline {
+    background: var(--yellow);
+    box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+/* ------------------------------------------------------------
+   FONT WARNING — shown when Dunbar Low fails to load.
+   Black bar, yellow text; tap to dismiss; never blocks flow.
+   ------------------------------------------------------------ */
+.font-warning {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: var(--ink);
+    color: var(--yellow);
+    padding: 9px var(--space-lg);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.font-warning.visible { display: flex; }
+
+.font-warning-square {
+    width: 10px;
+    height: 10px;
+    background: var(--yellow);
+    flex-shrink: 0;
+}
+
+.font-warning-hint {
+    margin-left: auto;
+    color: var(--surface);
+    opacity: 0.65;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------
+   MAIN LAYOUT — kiosk portrait (base): single column stack
+   ------------------------------------------------------------ */
+.main-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: var(--space-md);
+    overflow: hidden;
+}
+
+/* Shared panel chrome — white cards, hairline borders, on paper */
+.cart-panel,
+.items-panel,
+.checkout-panel {
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-md);
+    padding: var(--space-md) 14px;
+    min-height: 0;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+/* Yellow square bullet before section titles */
+.panel-header h2::before,
+.status-panel h3::before,
+.transaction-log h3::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: var(--yellow);
+    margin-right: 10px;
+}
+
+.panel-header h2 {
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------
+   CART
+   ------------------------------------------------------------ */
+.cart-panel {
+    flex-shrink: 0;
+}
+
+.cart-items {
+    min-height: 0;
+    max-height: 26dvh;
+    overflow-y: auto;
+    margin-bottom: var(--space-sm);
+    padding-right: 2px;
+}
+
+.cart-items::-webkit-scrollbar,
+.item-types-grid::-webkit-scrollbar,
+.log-content::-webkit-scrollbar { width: 6px; }
+
+.cart-items::-webkit-scrollbar-track,
+.item-types-grid::-webkit-scrollbar-track,
+.log-content::-webkit-scrollbar-track { background: transparent; }
+
+.cart-items::-webkit-scrollbar-thumb,
+.item-types-grid::-webkit-scrollbar-thumb,
+.log-content::-webkit-scrollbar-thumb {
+    background: var(--grey-hairline);
+    border-radius: 3px;
+}
+
+.empty-cart-message {
+    text-align: center;
+    padding: var(--space-lg) var(--space-md);
+    color: var(--grey-mid);
+    font-size: 0.9rem;
+}
+
+.empty-cart-subtitle {
+    font-size: 0.78rem;
+    margin-top: var(--space-xs);
+}
+
+.cart-item {
+    background: var(--paper);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) 10px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cart-item-info { flex: 1; min-width: 0; }
+
+.cart-item-name {
+    font-size: 0.9rem;
+    margin-bottom: 0.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cart-item-price {
+    color: var(--grey-mid);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.remove-item-btn {
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    width: 44px;
+    height: 44px;
+    font-size: 1.3rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.remove-item-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+}
+
+/* Total — ink panel, yellow figure (approved high-impact pairing) */
+.cart-summary {
+    background: var(--ink);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-top: var(--space-xs);
+}
+
+.total-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.total-label {
+    color: var(--surface);
+    font-size: 0.75rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.total-amount {
+    color: var(--yellow);
+    font-size: 1.6rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.clear-cart-btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    min-height: 44px;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.clear-cart-btn:active:not(:disabled) {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+}
+
+.clear-cart-btn:disabled {
+    color: var(--grey-mid);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------
+   ITEMS GRID — fills the middle of the kiosk screen
+   ------------------------------------------------------------ */
+.items-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.items-panel .panel-header { flex-shrink: 0; }
+
+.item-types-grid {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(96px, 1fr);
+    gap: 10px;
+    align-content: stretch;
+    padding-bottom: 2px;
+}
+
+.item-type-btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-md);
+    min-height: 96px;
+    padding: var(--space-md) 10px;
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+    transition: transform var(--speed-fast) ease;
+}
+
+.item-icon { font-size: 1.7rem; line-height: 1; }
+
+.item-name {
+    font-size: 0.85rem;
+    line-height: 1.2;
+}
+
+/* Pressed state — ink inversion (touch: active, not hover) */
+.item-type-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+    transform: scale(0.98);
+}
+
+/* ------------------------------------------------------------
+   CHECKOUT — ink button, yellow text (primary brand pairing)
+   ------------------------------------------------------------ */
+.checkout-panel {
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-md);
+    padding: 10px 12px;
+}
+
+.checkout-button-container {
+    flex: 1;
+}
+
+.checkout-btn {
+    width: 100%;
+    min-height: 60px;
+    background: var(--ink);
+    color: var(--yellow);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    font-size: 1.2rem;
+    letter-spacing: 0.14em;
+    transition: transform var(--speed-fast) ease, opacity var(--speed-fast) ease;
+}
+
+.checkout-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.checkout-btn:disabled {
+    background: var(--surface);
+    color: var(--grey-mid);
+    box-shadow: inset 0 0 0 1px var(--grey-hairline);
+    cursor: not-allowed;
+}
+
+.checkout-btn:focus-visible {
+    outline-color: var(--yellow);
+}
+
+.checkout-btn.processing {
+    animation: processing 1.5s infinite;
+}
+
+@keyframes processing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Status & log — desktop only; ink panel for status */
+.status-panel,
+.transaction-log {
+    display: none;
+}
+
+.status-panel {
+    background: var(--ink);
+    color: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.status-panel h3 {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-sm);
+}
+
+.status-message {
+    line-height: 1.4;
+    font-size: 0.9rem;
+}
+
+.transaction-log {
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-lg);
+}
+
+.transaction-log h3 {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-sm);
+}
+
+.log-content {
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: 0.78rem;
+}
+
+.log-entry {
+    padding: 3px 0 3px 10px;
+    border-left: 3px solid transparent;
+    color: var(--grey-mid);
+}
+
+.log-entry:last-child { border-bottom: none; }
+
+/* Shape redundancy: yellow bar = success, ink bar = error */
+.log-entry.success {
+    border-left-color: var(--yellow);
+    color: var(--ink);
+}
+
+.log-entry.error {
+    border-left-color: var(--ink);
+    color: var(--ink);
+}
+
+/* ------------------------------------------------------------
+   MODAL — price entry (bottom sheet on kiosk)
+   ------------------------------------------------------------ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 20, 20, 0.72);
+    display: none;
+    justify-content: center;
+    align-items: flex-end;
+    z-index: 1000;
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-content {
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: var(--space-lg);
+    width: 100%;
+    max-width: 100%;
+    max-height: 88dvh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--grey-hairline);
+    min-height: 44px;
+}
+
+.modal-header h2 {
+    font-size: 1.1rem;
+    line-height: 1.25;
+    flex: 1;
+}
+
+.modal-item-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.modal-item-icon { font-size: 1.6rem; line-height: 1; }
+
+.modal-item-name {
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+}
+
+.modal-item-name::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: var(--yellow);
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+
+.modal-item-description {
+    background: var(--paper);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    color: var(--grey-mid);
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.modal-close {
+    background: none;
+    border: 1px solid var(--grey-hairline);
+    color: var(--ink);
+    font-size: 1.6rem;
+    line-height: 1;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.modal-close:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+}
+
+.price-input-section {
+    text-align: center;
+    margin-bottom: var(--space-md);
+}
+
+.price-input-section label {
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--grey-mid);
+    margin-bottom: var(--space-sm);
+}
+
+.price-display {
+    font-size: 2.6rem;
+    line-height: 1.1;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    margin-bottom: var(--space-md);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Keypad */
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: var(--space-md);
+}
+
+.keypad-btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    font-size: 1.5rem;
+    min-height: 60px;
+    transition: transform var(--speed-fast) ease;
+}
+
+.keypad-btn:active {
+    background: var(--ink);
+    color: var(--yellow);
+    border-color: var(--ink);
+    transform: scale(0.97);
+}
+
+.keypad-btn.clear-btn {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+}
+
+.keypad-btn.clear-btn:active {
+    background: var(--yellow);
+    color: var(--ink);
+}
+
+.modal-footer {
+    display: flex;
+    gap: 10px;
+}
+
+.modal-btn {
+    flex: 1;
+    padding: var(--space-md);
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    letter-spacing: 0.06em;
+    min-height: 56px;
+    transition: transform var(--speed-fast) ease;
+}
+
+.cancel-btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+}
+
+.cancel-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+}
+
+.add-btn {
+    background: var(--ink);
+    color: var(--yellow);
+    border: none;
+}
+
+.add-btn:active {
+    transform: scale(0.98);
+}
+
+.add-btn:focus-visible {
+    outline-color: var(--yellow);
+}
+
+/* ------------------------------------------------------------
+   LOADING OVERLAY — ink field, yellow spinner
+   ------------------------------------------------------------ */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 20, 20, 0.96);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.loading-overlay.active { display: flex; }
+
+.loading-content {
+    text-align: center;
+    color: var(--surface);
+    padding: var(--space-lg);
+}
+
+.loading-spinner {
+    width: 56px;
+    height: 56px;
+    border: 4px solid rgba(254, 210, 2, 0.25);
+    border-top-color: var(--yellow);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin: 0 auto var(--space-xl);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 1.05rem;
+    line-height: 1.4;
+    max-width: 30ch;
+    margin: 0 auto;
+}
+
+/* ------------------------------------------------------------
+   TOAST — in-page messages (replaces alert())
+   Black panel, white text; yellow square = success/error.
+   ------------------------------------------------------------ */
+.toast {
+    position: fixed;
+    top: 78px;
+    left: 50%;
+    transform: translate(-50%, -10px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--ink);
+    color: var(--surface);
+    padding: 12px 18px;
+    border-radius: var(--radius-sm);
+    max-width: min(92vw, 520px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--speed) ease, transform var(--speed) ease, visibility var(--speed);
+    z-index: 1500; /* above the modal (1000): validation toasts fire while it is open */
+}
+
+.toast.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+}
+
+.toast-marker {
+    width: 10px;
+    height: 10px;
+    background: var(--grey-hairline);
+    flex-shrink: 0;
+}
+
+.toast-success .toast-marker,
+.toast-error .toast-marker {
+    background: var(--yellow);
+}
+
+.toast-text {
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+/* ------------------------------------------------------------
+   FOOTER — letter-spaced caps with middot separators
+   ------------------------------------------------------------ */
+.footer {
+    flex-shrink: 0;
+    padding: 9px var(--space-lg);
+    text-align: center;
+}
+
+.footer-tagline {
+    font-size: 0.65rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--grey-mid);
+}
+
+/* ============================================================
+   DESKTOP (secondary) — 3-column layout above kiosk width
+   ============================================================ */
+@media (min-width: 721px) {
+    .header {
+        padding: var(--space-lg) var(--space-2xl);
+    }
+
+    .brand-mark {
+        width: 52px;
+        height: 52px;
+    }
+
+    .app-title { font-size: 1.5rem; }
+
+    .main-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: var(--space-2xl);
+        padding: var(--space-2xl);
+        overflow-y: auto;
+    }
+
+    .cart-panel,
+    .items-panel,
+    .checkout-panel {
+        padding: var(--space-2xl);
+        border-radius: var(--radius-lg);
+    }
+
+    .cart-items { max-height: 400px; }
+
+    .item-types-grid { overflow-y: visible; }
+
+    .item-type-btn:hover {
+        border-color: var(--ink);
+    }
+
+    .checkout-panel {
+        display: block;
+    }
+
+    .checkout-button-container {
+        margin-bottom: var(--space-2xl);
+    }
+
+    .checkout-btn {
+        padding: 1.5rem;
+        font-size: 1.3rem;
+        min-height: 0;
+    }
+
+    .status-panel,
+    .transaction-log {
+        display: block;
+    }
+
+    .toast { top: 104px; }
+
+    .modal-overlay { align-items: center; }
+
+    .modal-content {
+        width: 92%;
+        max-width: 480px;
+        max-height: 92dvh;
+        border-radius: var(--radius-lg);
+        padding: var(--space-2xl);
+    }
+
+    .modal-header { margin-bottom: var(--space-lg); }
+}
+
+/* ============================================================
+   TOUCH DEVICE SAFETY (any width)
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+    .item-type-btn,
+    .checkout-btn,
+    .keypad-btn,
+    .modal-btn {
+        min-height: 56px;
+    }
+
+    .remove-item-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

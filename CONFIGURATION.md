@@ -94,7 +94,7 @@ The item types are configured in: `backend/items_config.json`
 
 4. **Reload the configuration**:
    - **Option 1**: Restart the backend server
-   - **Option 2**: Call the reload endpoint: `GET http://localhost:8000/api/config/reload`
+   - **Option 2**: Call the reload endpoint (admin only): `POST http://localhost:8000/api/config/reload` with header `X-Admin-Token: <ADMIN_TOKEN>` when `ADMIN_TOKEN` is set; loopback-only otherwise
 
 ## How to Disable Item Types
 
@@ -162,15 +162,15 @@ The system automatically validates the configuration:
 
 ### Method 1: API Endpoint
 ```bash
-curl http://localhost:8000/api/config/reload
+curl -X POST http://localhost:8000/api/config/reload -H "X-Admin-Token: $ADMIN_TOKEN"
 ```
 
 ### Method 2: Restart Backend
 ```bash
 # Stop the backend (Ctrl+C)
 # Start it again
-cd hackypay-web/backend
-python main.py
+cd backend
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 ### Method 3: Auto-reload (Development)

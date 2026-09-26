@@ -1,16 +1,22 @@
 import json
+import logging
 import os
 from typing import List, Dict, Any
 from pathlib import Path
 
-from models import ItemsConfig, ItemTypeConfig
+from ..models import ItemsConfig, ItemTypeConfig
+
+# backend/items_config.json in the repo; ITEMS_CONFIG_PATH is set in containers
+_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "items_config.json"
+
+logger = logging.getLogger(__name__)
 
 class ItemsService:
     def __init__(self):
-        self.config_file = Path(__file__).parent.parent / "items_config.json"
+        self.config_file = Path(os.environ.get("ITEMS_CONFIG_PATH") or _DEFAULT_CONFIG_PATH)
         self._config = None
         self.load_config()
-    
+
     def load_config(self) -> None:
         """Load items configuration from JSON file"""
         try:
@@ -18,14 +24,14 @@ class ItemsService:
                 config_data = json.load(f)
                 self._config = ItemsConfig(**config_data)
         except FileNotFoundError:
-            # Create default config if file doesn't exist
-            self._create_default_config()
+            # Read-only mounts (K8s) must not crash startup — persisting defaults is best-effort
+            self._config = self._build_default_config()
+            self._try_write_default_config()
         except Exception as e:
             raise Exception(f"Error loading items configuration: {e}")
-    
-    def _create_default_config(self) -> None:
-        """Create default configuration file"""
-        default_config = {
+
+    def _build_default_config(self) -> ItemsConfig:
+        return ItemsConfig(**{
             "item_types": [
                 {
                     "id": "food_drink",
@@ -63,12 +69,17 @@ class ItemsService:
                 "currency_symbol": "£",
                 "decimal_places": 2
             }
-        }
-        
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(default_config, f, indent=2, ensure_ascii=False)
-        
-        self._config = ItemsConfig(**default_config)
+        })
+
+    def _try_write_default_config(self) -> None:
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self._config.model_dump(), f, indent=2, ensure_ascii=False)
+        except OSError:
+            logger.warning(
+                "Could not write default items config to %s; using in-memory defaults",
+                self.config_file,
+            )
     
     def get_enabled_item_types(self) -> List[ItemTypeConfig]:
         """Get list of enabled item types"""

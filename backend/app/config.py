@@ -1,12 +1,15 @@
 import os
 import logging
+from pathlib import Path
 from typing import Optional
-from pydantic import field_validator
+from pydantic import field_validator, ValidationError
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from backend/.env regardless of CWD
+load_dotenv(_BACKEND_DIR / ".env")
 
 # Configure logging to never log sensitive configuration values
 class SecureFormatter(logging.Formatter):
@@ -46,10 +49,12 @@ class Settings(BaseSettings):
     
     # Security Configuration
     api_key_header: str = "X-API-Key"
+    admin_token: Optional[str] = None  # required for /api/config/reload when set
     request_timeout: int = 30
     max_request_size: int = 1024 * 1024  # 1MB
     rate_limit_requests: int = 100  # requests per minute per IP
     rate_limit_window: int = 60  # seconds
+    rate_limit_max_keys: int = 10000  # cap tracked IPs (memory bound)
     
     # Additional Security Settings
     enable_security_headers: bool = True
@@ -114,11 +119,16 @@ class Settings(BaseSettings):
         return f"{self.sumup_reader_id[:6]}***MASKED***"
     
     class Config:
-        env_file = ".env"
+        env_file = str(_BACKEND_DIR / ".env")
         case_sensitive = False
 
-# Global settings instance
-settings = Settings()
+# Global settings instance. Pydantic's ValidationError repr echoes secret field
+# values (input_value) to stderr, so re-raise with field names only.
+try:
+    settings = Settings()
+except ValidationError as exc:
+    fields = sorted({str(e.get("loc", ["?"])[0]) for e in exc.errors()})
+    raise RuntimeError(f"Invalid configuration for: {', '.join(fields)}") from None
 
 def get_settings() -> Settings:
     """Get application settings"""

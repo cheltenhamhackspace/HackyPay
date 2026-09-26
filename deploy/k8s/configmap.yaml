@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hackypay-config
+  namespace: hackypay
+  labels:
+    app.kubernetes.io/name: hackypay
+data:
+  # Mounted over /app/items_config.json in the pod (read-only).
+  # Edit here and re-apply, then POST /api/config/reload (or restart the pod).
+  items_config.json: |
+    {
+      "item_types": [
+        {
+          "id": "food_drink",
+          "name": "Food & Drink",
+          "icon": "🍕",
+          "description": "Snacks, drinks, and food items",
+          "enabled": true
+        },
+        {
+          "id": "laser_time",
+          "name": "Laser Time",
+          "icon": "⚡",
+          "description": "Laser cutter usage time",
+          "enabled": true
+        },
+        {
+          "id": "laser_materials",
+          "name": "Laser Materials",
+          "icon": "📦",
+          "description": "Materials for laser cutting",
+          "enabled": true
+        },
+        {
+          "id": "printer_time",
+          "name": "3D Printer Time",
+          "icon": "🖨️",
+          "description": "3D printer usage time",
+          "enabled": true
+        }
+      ],
+      "settings": {
+        "max_price": 50.00,
+        "min_price": 1.00,
+        "currency": "GBP",
+        "currency_symbol": "£",
+        "decimal_places": 2
+      }
+    }
+  # The kiosk UI is served by the backend itself, so browser requests are
+  # same-origin and CORS is not involved. Set this only if you serve the
+  # frontend from a separate origin (e.g. dev machine against a cluster API).
+  ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+  DEBUG: "false"

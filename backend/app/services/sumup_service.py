@@ -3,9 +3,9 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from config import get_settings
-from models import CheckoutRequest, PaymentResponse
-from security import get_secure_logger, security_filter
+from ..config import get_settings
+from ..models import CheckoutRequest, PaymentResponse
+from ..security import get_secure_logger, security_filter
 
 logger = get_secure_logger(__name__)
 
@@ -49,7 +49,7 @@ class SumUpService:
             else:
                 item_summary.append(f"{item.item_type} (£{item.price:.2f})")
 
-        return f"Self Checkout: {', '.join(item_summary)}"
+        return f"Self Checkout: {', '.join(item_summary)}"[:500]
 
     # ----------------------------------------------------------------
     #  Checkout
@@ -250,6 +250,17 @@ class SumUpService:
             data = response.json()
 
             if isinstance(data, dict):
+                returned_id = data.get("client_transaction_id")
+                if returned_id != client_transaction_id:
+                    logger.warning(
+                        "Transaction lookup returned mismatched record; ignoring"
+                    )
+                    return {
+                        "found": False,
+                        "status": "NOT_FOUND",
+                        "transaction_id": None,
+                        "amount": None,
+                    }
                 return {
                     "found": True,
                     "status": data.get("status"),
