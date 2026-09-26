@@ -69,7 +69,7 @@ Images are built automatically by GitHub CI (`.github/workflows/container-image.
 
 > GHCR packages are **private by default** — either flip the package to public in GitHub → Packages settings, or create an `imagePullSecret` (the Deployment has a commented `imagePullSecrets` block ready for it).
 
-The manifests in `deploy/k8s/` default to the `:main` image. Plain manifests: Namespace, Secret (SumUp credentials), ConfigMap (items config + CORS), Deployment (1 replica — the rate limiter and the single physical reader are singletons; probes on `/api/health`; non-root, read-only root FS), Service (ClusterIP, with a NodePort variant commented in for LAN kiosk access).
+The manifests in `deploy/k8s/` are pinned to the current release image (`:1.0.0` — bumped with each release, see [Releasing](#releasing)). Plain manifests: Namespace, Secret (SumUp credentials), ConfigMap (items config + CORS), Deployment (1 replica — the rate limiter and the single physical reader are singletons; probes on `/api/health`; non-root, read-only root FS), Service (ClusterIP, with a NodePort variant commented in for LAN kiosk access).
 
 ```bash
 kubectl apply -f deploy/k8s/namespace.yaml
@@ -85,8 +85,25 @@ Building locally instead (e.g. for direct import into k3s/microk8s without a reg
 docker build -f deploy/Dockerfile -t hackypay:latest .            # native arch
 docker buildx build --platform linux/amd64,linux/arm64 \
   -f deploy/Dockerfile -t hackypay:latest --load .                # multi-arch
+```
 
 The backend calls `api.sumup.com:443` — ensure egress is allowed if you run default-deny NetworkPolicies.
+
+## Releasing
+
+1. Bump `version` in `backend/pyproject.toml`.
+2. Commit the bump, then tag (annotated tag, `v` prefix, matching the pyproject version):
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z: one-line summary"
+   git push origin vX.Y.Z
+   ```
+3. CI builds and publishes multi-arch images:
+   - `ghcr.io/cheltenhamhackspace/hackypay:X.Y.Z`
+   - `ghcr.io/cheltenhamhackspace/hackypay:X.Y`
+4. Update the image tag in `deploy/k8s/deployment.yaml` to the new version and apply.
+5. Optionally add release notes under GitHub → Releases (the tag already exists there).
+
+Rolling back = pointing the Deployment back at the previous version tag and re-applying.
 
 ## Security
 
