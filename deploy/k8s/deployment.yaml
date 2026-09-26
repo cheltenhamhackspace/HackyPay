@@ -28,8 +28,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: hackypay
-          image: hackypay:latest   # load into your cluster (e.g. `kind load docker-image hackypay:latest` or push to your registry)
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/cheltenhamhackspace/hackypay:main
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8000
@@ -64,6 +64,10 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
+      # ghcr packages are private by default: make the package public, or
+      # create an imagePullSecret and uncomment:
+      # imagePullSecrets:
+      #   - name: ghcr-pull
       volumes:
         - name: items-config
           configMap:

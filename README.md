@@ -62,10 +62,16 @@ FastAPI docs (`/docs`, `/redoc`) are available only when `DEBUG=true`.
 
 ## Deploying on Kubernetes
 
-Plain manifests in `deploy/k8s/`: Namespace, Secret (SumUp credentials), ConfigMap (items config + CORS), Deployment (1 replica — the rate limiter and the single physical reader are singletons; probes on `/api/health`; non-root, read-only root FS), Service (ClusterIP, with a NodePort variant commented in for LAN kiosk access).
+Images are built automatically by GitHub CI (`.github/workflows/container-image.yml`) and published to GHCR as multi-arch (amd64 + arm64):
+
+- pushes to `main` → `ghcr.io/cheltenhamhackspace/hackypay:main` (+ `:sha-<sha>`)
+- `v*` tags → `ghcr.io/cheltenhamhackspace/hackypay:<version>`
+
+> GHCR packages are **private by default** — either flip the package to public in GitHub → Packages settings, or create an `imagePullSecret` (the Deployment has a commented `imagePullSecrets` block ready for it).
+
+The manifests in `deploy/k8s/` default to the `:main` image. Plain manifests: Namespace, Secret (SumUp credentials), ConfigMap (items config + CORS), Deployment (1 replica — the rate limiter and the single physical reader are singletons; probes on `/api/health`; non-root, read-only root FS), Service (ClusterIP, with a NodePort variant commented in for LAN kiosk access).
 
 ```bash
-# build + load the image into your cluster, then:
 kubectl apply -f deploy/k8s/namespace.yaml
 kubectl apply -f deploy/k8s/secret.yaml     # or create the real secret via kubectl create secret
 kubectl apply -f deploy/k8s/configmap.yaml
@@ -73,7 +79,12 @@ kubectl apply -f deploy/k8s/deployment.yaml
 kubectl apply -f deploy/k8s/service.yaml
 ```
 
-Build the image from the repo root: `docker build -f deploy/Dockerfile -t hackypay:latest .`
+Building locally instead (e.g. for direct import into k3s/microk8s without a registry):
+
+```bash
+docker build -f deploy/Dockerfile -t hackypay:latest .            # native arch
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f deploy/Dockerfile -t hackypay:latest --load .                # multi-arch
 
 The backend calls `api.sumup.com:443` — ensure egress is allowed if you run default-deny NetworkPolicies.
 
