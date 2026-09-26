@@ -11,8 +11,8 @@ from datetime import datetime
 
 # Patterns to identify sensitive data
 SENSITIVE_PATTERNS = [
-    r'sup_sk_[a-zA-Z0-9]+',  # SumUp API tokens
-    r'rdr_[a-zA-Z0-9]+',     # SumUp reader IDs
+    r'sup_sk_[a-zA-Z0-9_.\-]+',  # SumUp API tokens (incl. separator chars)
+    r'rdr_[a-zA-Z0-9_.\-]+',     # SumUp reader IDs
     r'Bearer\s+[a-zA-Z0-9_\-\.]+',  # Bearer tokens
     r'Authorization:\s*Bearer\s+[^\s]+',  # Authorization headers
     r'X-API-Key:\s*[^\s]+',  # API key headers
@@ -95,7 +95,7 @@ class SecureLoggerAdapter(logging.LoggerAdapter):
     """Logger adapter that automatically sanitizes log messages"""
     
     def process(self, msg, kwargs):
-        # Sanitize the message
+        # Sanitize the message; lazy %-args are masked at output by SecureFormatter
         if isinstance(msg, str):
             msg = security_filter.sanitize_string(msg)
         
@@ -147,19 +147,22 @@ def sanitize_request_for_logging(request: Request) -> Dict[str, Any]:
 def validate_environment_security():
     """Validate that environment variables are properly configured for security"""
     import os
-    
+    from .config import get_settings
+
+    settings = get_settings()
     issues = []
-    
+
     # Check if sensitive environment variables are set
     required_vars = ['SUMUP_API_TOKEN', 'SUMUP_MERCHANT_CODE', 'SUMUP_READER_ID']
     for var in required_vars:
-        if not os.getenv(var):
+        if not os.getenv(var) and not getattr(settings, var.lower(), None):
             issues.append(f"Missing required environment variable: {var}")
-    
-    # Check if debug mode is disabled in production
-    if os.getenv('DEBUG', '').lower() in ['true', '1', 'yes']:
+
+    # Check debug mode via settings (pydantic reads case-insensitive env names,
+    # which os.getenv('DEBUG') alone would miss)
+    if settings.debug:
         issues.append("DEBUG mode should be disabled in production")
-    
+
     return issues
 
 # Middleware for additional security headers
@@ -167,7 +170,11 @@ def add_security_headers(response):
     """Add security headers to responses"""
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self'; font-src 'self'; connect-src 'self'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    )
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
     response.headers["Pragma"] = "no-cache"

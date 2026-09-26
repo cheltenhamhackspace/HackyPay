@@ -14,7 +14,7 @@ class ItemsConfig(BaseModel):
     settings: dict
 
 class CartItem(BaseModel):
-    item_type: str
+    item_type: str = Field(..., min_length=1, max_length=100)
     price: Decimal = Field(..., gt=0, le=999.99, description="Price in GBP")
     quantity: int = Field(default=1, gt=0, le=100)
 
@@ -29,6 +29,13 @@ class CheckoutRequest(BaseModel):
     items: List[CartItem] = Field(..., min_length=1, max_length=50)
     total_amount: Decimal = Field(..., gt=0, le=9999.99)
     description: Optional[str] = Field(None, max_length=500)
+
+    @field_validator('total_amount')
+    @classmethod
+    def validate_total_amount(cls, v):
+        if v.as_tuple().exponent < -2:
+            raise ValueError('Total amount cannot have more than 2 decimal places')
+        return v
 
     @model_validator(mode='after')
     def validate_total(self):
