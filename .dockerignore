@@ -1,0 +1,11 @@
+.git
+.omo
+deploy
+backend/.venv
+backend/tests
+backend/.env
+backend/.env.*
+!.env.example
+**/__pycache__
+**/*.pyc
+*.md

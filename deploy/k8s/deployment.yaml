@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hackypay
+  namespace: hackypay
+  labels:
+    app.kubernetes.io/name: hackypay
+    app.kubernetes.io/component: backend
+spec:
+  # ONE replica on purpose: the in-memory rate limiter and the single physical
+  # card reader are singletons. Scaling out needs Redis-backed rate limiting
+  # and per-reader routing first.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hackypay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hackypay
+        app.kubernetes.io/component: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hackypay
+          image: hackypay:latest   # load into your cluster (e.g. `kind load docker-image hackypay:latest` or push to your registry)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: hackypay-sumup
+            - configMapRef:
+                name: hackypay-config
+          volumeMounts:
+            - name: items-config
+              mountPath: /app/items_config.json
+              subPath: items_config.json
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: items-config
+          configMap:
+            name: hackypay-config
+        - name: tmp
+          emptyDir: {}
+      # Egress to api.sumup.com:443 is required for reader/checkout calls.
+      # If you run a NetworkPolicy default-deny policy, add an allow rule for
+      # TCP 443 to api.sumup.com from this pod.
