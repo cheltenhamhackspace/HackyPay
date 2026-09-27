@@ -3,9 +3,17 @@
    Brand: Hack Yellow #FED202 (accent only) + Ink #141414 on
    Paper #FAFAF7. Type: Dunbar Low Bold (self-hosted).
 
-   Built portrait-first for Raspberry Pi Touch Display 2
-   (720×1280). Desktop (min-width: 721px) is functional but
-   secondary. Offline: no external requests.
+   Multi-screen kiosk flow (items / cart / payment / done),
+   SPA-style: one .screen visible at a time, driven by
+   body[data-screen] + app.js. Built portrait-first for
+   Raspberry Pi Touch Display 2 (720×1280). Desktop
+   (min-width: 721px) is a centered single column, secondary.
+   Offline: no external requests.
+
+   Order: tokens → base → header → font warning → layout &
+   screens → components (bottom bar, items, cart, payment,
+   done, status/log, modal, toast) → footer → desktop →
+   touch → reduced motion.
    ============================================================ */
 
 /* Brand font — self-hosted, no CDN
@@ -67,6 +75,7 @@ html {
     height: 100%;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
 }
 
 body {
@@ -79,6 +88,7 @@ body {
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
+    overscroll-behavior: none;
 }
 
 button {
@@ -87,6 +97,22 @@ button {
     color: inherit;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+/* Kiosk touch: pan-y only, never chain overscroll into the shell (kills pull-to-refresh / page drift) */
+.item-types-grid,
+.cart-items,
+.log-content,
+.modal-content {
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    will-change: scroll-position;
 }
 
 button:focus-visible {
@@ -99,6 +125,11 @@ button:focus-visible {
     height: 100dvh;
     display: flex;
     flex-direction: column;
+}
+
+/* Utility — JS-toggled hard hide (payment phases) */
+.hidden {
+    display: none !important;
 }
 
 /* ------------------------------------------------------------
@@ -224,26 +255,42 @@ button:focus-visible {
 }
 
 /* ------------------------------------------------------------
-   MAIN LAYOUT — kiosk portrait (base): single column stack
+   MAIN LAYOUT & SCREENS — one .screen visible at a time
    ------------------------------------------------------------ */
 .main-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
     padding: var(--space-md);
     overflow: hidden;
 }
 
+.screen {
+    flex: 1;
+    min-height: 0;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.screen.active {
+    display: flex;
+    animation: screen-in var(--speed-fast) ease;
+}
+
+@keyframes screen-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Shared panel chrome — white cards, hairline borders, on paper */
-.cart-panel,
 .items-panel,
-.checkout-panel {
+.cart-list-panel,
+.pay-card {
     background: var(--surface);
     border: 1px solid var(--grey-hairline);
     border-radius: var(--radius-md);
-    padding: var(--space-md) 14px;
     min-height: 0;
 }
 
@@ -257,6 +304,7 @@ button:focus-visible {
 
 /* Yellow square bullet before section titles */
 .panel-header h2::before,
+.cart-screen-title::before,
 .status-panel h3::before,
 .transaction-log h3::before {
     content: '';
@@ -274,17 +322,225 @@ button:focus-visible {
 }
 
 /* ------------------------------------------------------------
-   CART
+   BOTTOM BAR — ink strip on ITEMS & CART screens only.
+   LEFT: live cart summary (count white + total yellow, opens
+   CART) or empty-cart hint. RIGHT: CHECKOUT (black-on-yellow
+   when enabled; greyed + hint when the cart is empty).
    ------------------------------------------------------------ */
-.cart-panel {
+.bottom-bar {
     flex-shrink: 0;
+    display: none;
+    align-items: stretch;
+    gap: 10px;
+    background: var(--ink);
+    padding: 10px var(--space-md);
+    min-height: 88px;
+}
+
+body[data-screen="items"] .bottom-bar,
+body[data-screen="cart"] .bottom-bar {
+    display: flex;
+}
+
+/* Empty-cart state: hint text instead of the summary button */
+.bar-hint {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    color: var(--grey-hairline);
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+    padding: 0 6px;
+    min-width: 0;
+}
+
+.bottom-bar:not(.is-empty) .bar-hint { display: none; }
+.bottom-bar.is-empty .cart-summary-btn { display: none; }
+
+.cart-summary-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 3px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    text-align: left;
+    transition: background var(--speed-fast) ease;
+}
+
+.cart-summary-count {
+    color: var(--surface);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.cart-summary-total {
+    color: var(--yellow);
+    font-size: 1.6rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Pressed state — black-on-yellow inversion (approved pairing) */
+.cart-summary-btn:active {
+    background: var(--yellow);
+}
+
+.cart-summary-btn:active .cart-summary-count,
+.cart-summary-btn:active .cart-summary-total {
+    color: var(--ink);
+}
+
+.checkout-btn {
+    flex-shrink: 0;
+    min-width: 220px;
+    min-height: 68px;
+    background: var(--yellow);
+    color: var(--ink);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0 var(--space-xl);
+    font-size: 1.15rem;
+    letter-spacing: 0.14em;
+    transition: transform var(--speed-fast) ease, opacity var(--speed-fast) ease;
+}
+
+.checkout-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+/* Disabled: not color-alone — muted text, inset outline, opacity,
+   plus the hint text appears on the left side of the bar */
+.checkout-btn:disabled {
+    background: var(--ink);
+    color: var(--grey-hairline);
+    box-shadow: inset 0 0 0 1px var(--grey-mid);
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.checkout-btn:focus-visible {
+    outline-color: var(--surface);
+}
+
+/* ------------------------------------------------------------
+   SCREEN 1: ITEMS — grid fills all space above the bottom bar
+   ------------------------------------------------------------ */
+.items-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: var(--space-md) 14px;
+}
+
+.items-panel .panel-header { flex-shrink: 0; }
+
+.item-types-grid {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(150px, 1fr);
+    gap: 12px;
+    align-content: stretch;
+    padding-bottom: 2px;
+}
+
+.item-type-btn {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-md);
+    min-height: 150px;
+    padding: var(--space-lg) 12px;
+    font-size: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    transition: transform var(--speed-fast) ease;
+}
+
+.item-icon { font-size: 2.6rem; line-height: 1; }
+
+.item-name {
+    font-size: 1.05rem;
+    line-height: 1.25;
+}
+
+/* Pressed state — ink inversion (touch: active, not hover) */
+.item-type-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+    transform: scale(0.98);
+}
+
+/* ------------------------------------------------------------
+   SCREEN 2: CART — review/edit before paying
+   ------------------------------------------------------------ */
+.cart-screen-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.back-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    min-height: 52px;
+    padding: 0 18px;
+    font-size: 0.95rem;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    transition: transform var(--speed-fast) ease;
+}
+
+.back-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+    transform: scale(0.98);
+}
+
+.cart-screen-title {
+    flex: 1;
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.cart-list-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: var(--space-md) 14px;
 }
 
 .cart-items {
+    flex: 1;
     min-height: 0;
-    max-height: 26dvh;
     overflow-y: auto;
-    margin-bottom: var(--space-sm);
     padding-right: 2px;
 }
 
@@ -305,13 +561,13 @@ button:focus-visible {
 
 .empty-cart-message {
     text-align: center;
-    padding: var(--space-lg) var(--space-md);
+    padding: var(--space-2xl) var(--space-md);
     color: var(--grey-mid);
-    font-size: 0.9rem;
+    font-size: 1.05rem;
 }
 
 .empty-cart-subtitle {
-    font-size: 0.78rem;
+    font-size: 0.85rem;
     margin-top: var(--space-xs);
 }
 
@@ -319,19 +575,20 @@ button:focus-visible {
     background: var(--paper);
     border: 1px solid var(--grey-hairline);
     border-radius: var(--radius-sm);
-    padding: var(--space-sm) 10px;
-    margin-bottom: 6px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    min-height: 76px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-md);
 }
 
 .cart-item-info { flex: 1; min-width: 0; }
 
 .cart-item-name {
-    font-size: 0.9rem;
-    margin-bottom: 0.1rem;
+    font-size: 1.1rem;
+    margin-bottom: 0.15rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -339,7 +596,7 @@ button:focus-visible {
 
 .cart-item-price {
     color: var(--grey-mid);
-    font-size: 0.85rem;
+    font-size: 1.05rem;
     font-variant-numeric: tabular-nums;
 }
 
@@ -347,9 +604,9 @@ button:focus-visible {
     background: var(--surface);
     border: 1px solid var(--grey-hairline);
     border-radius: var(--radius-sm);
-    width: 44px;
-    height: 44px;
-    font-size: 1.3rem;
+    width: 52px;
+    height: 52px;
+    font-size: 1.5rem;
     line-height: 1;
     display: flex;
     align-items: center;
@@ -363,44 +620,17 @@ button:focus-visible {
     border-color: var(--ink);
 }
 
-/* Total — ink panel, yellow figure (approved high-impact pairing) */
-.cart-summary {
-    background: var(--ink);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    margin-top: var(--space-xs);
-}
-
-.total-display {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-}
-
-.total-label {
-    color: var(--surface);
-    font-size: 0.75rem;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-}
-
-.total-amount {
-    color: var(--yellow);
-    font-size: 1.6rem;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-}
-
 .clear-cart-btn {
     background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--grey-hairline);
     border-radius: var(--radius-sm);
     padding: 10px 14px;
-    min-height: 44px;
+    min-height: 52px;
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    flex-shrink: 0;
 }
 
 .clear-cart-btn:active:not(:disabled) {
@@ -416,114 +646,222 @@ button:focus-visible {
 }
 
 /* ------------------------------------------------------------
-   ITEMS GRID — fills the middle of the kiosk screen
+   SCREEN 3: PAYMENT — big total, live reader status, cancel.
+   Two phases: waiting (status + cancel) and failed
+   (message + Try Again + Back to Items). Cart is always kept
+   on failure/cancel.
    ------------------------------------------------------------ */
-.items-panel {
-    flex: 1;
+.pay-total-panel {
+    flex-shrink: 0;
+    background: var(--ink);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2xl) var(--space-lg);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
 }
 
-.items-panel .panel-header { flex-shrink: 0; }
+.pay-total-label {
+    color: var(--surface);
+    font-size: 0.8rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+}
 
-.item-types-grid {
+.pay-total-amount {
+    color: var(--yellow);
+    font-size: 4rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.pay-item-count {
+    color: var(--grey-hairline);
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pay-card {
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-auto-rows: minmax(96px, 1fr);
-    gap: 10px;
-    align-content: stretch;
-    padding-bottom: 2px;
-}
-
-.item-type-btn {
-    background: var(--surface);
-    color: var(--ink);
-    border: 1px solid var(--grey-hairline);
-    border-radius: var(--radius-md);
-    min-height: 96px;
-    padding: var(--space-md) 10px;
-    font-size: 0.9rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
     text-align: center;
-    gap: 6px;
-    transition: transform var(--speed-fast) ease;
 }
 
-.item-icon { font-size: 1.7rem; line-height: 1; }
-
-.item-name {
-    font-size: 0.85rem;
-    line-height: 1.2;
+/* Waiting phase — subtle pulse only (opacity, reduced-motion safe) */
+.pay-pulse {
+    width: 22px;
+    height: 22px;
+    background: var(--yellow);
+    animation: pulse 1.6s infinite;
 }
 
-/* Pressed state — ink inversion (touch: active, not hover) */
-.item-type-btn:active {
-    background: var(--ink);
-    color: var(--surface);
-    border-color: var(--ink);
-    transform: scale(0.98);
+.pay-status {
+    font-size: 1.35rem;
+    line-height: 1.35;
+    max-width: 24ch;
 }
 
-/* ------------------------------------------------------------
-   CHECKOUT — ink button, yellow text (primary brand pairing)
-   ------------------------------------------------------------ */
-.checkout-panel {
-    flex-shrink: 0;
+/* Failure phase — hidden until JS toggles .visible */
+.pay-failure { display: none; }
+
+.pay-failure.visible { display: flex; }
+
+.pay-failure-msg {
+    font-size: 1.1rem;
+    line-height: 1.4;
+    max-width: 26ch;
+}
+
+.pay-failure-actions {
     display: flex;
-    align-items: stretch;
-    gap: var(--space-md);
-    padding: 10px 12px;
-}
-
-.checkout-button-container {
-    flex: 1;
-}
-
-.checkout-btn {
+    gap: 10px;
     width: 100%;
-    min-height: 60px;
+}
+
+.pay-action-btn {
+    flex: 1;
+    min-height: 64px;
     background: var(--ink);
     color: var(--yellow);
     border: none;
     border-radius: var(--radius-sm);
-    padding: var(--space-md);
-    font-size: 1.2rem;
-    letter-spacing: 0.14em;
-    transition: transform var(--speed-fast) ease, opacity var(--speed-fast) ease;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    transition: transform var(--speed-fast) ease;
 }
 
-.checkout-btn:active:not(:disabled) {
+.pay-action-btn:active {
     transform: scale(0.98);
 }
 
-.checkout-btn:disabled {
-    background: var(--surface);
-    color: var(--grey-mid);
-    box-shadow: inset 0 0 0 1px var(--grey-hairline);
-    cursor: not-allowed;
-}
-
-.checkout-btn:focus-visible {
+.pay-action-btn:focus-visible {
     outline-color: var(--yellow);
 }
 
-.checkout-btn.processing {
-    animation: processing 1.5s infinite;
+.pay-action-secondary {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
 }
 
-@keyframes processing {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+.pay-action-secondary:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
 }
 
-/* Status & log — desktop only; ink panel for status */
+.pay-cancel-btn {
+    flex-shrink: 0;
+    min-height: 64px;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--grey-hairline);
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: transform var(--speed-fast) ease;
+}
+
+.pay-cancel-btn:active {
+    background: var(--ink);
+    color: var(--surface);
+    border-color: var(--ink);
+    transform: scale(0.99);
+}
+
+/* ------------------------------------------------------------
+   SCREEN 4: DONE — full ink panel, yellow diamond + check,
+   amount paid, countdown auto-return + tap to continue.
+   ------------------------------------------------------------ */
+.done-panel {
+    flex: 1;
+    background: var(--ink);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-lg);
+    padding: var(--space-2xl);
+    text-align: center;
+}
+
+/* Yellow diamond (rotated square) with ink check — brand motif */
+.done-mark {
+    width: 104px;
+    height: 104px;
+    background: var(--yellow);
+    border-radius: 14px;
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    margin: var(--space-2xl) 0;
+    flex-shrink: 0;
+}
+
+.done-mark svg {
+    width: 54px;
+    height: 54px;
+    transform: rotate(-45deg);
+}
+
+.done-title {
+    color: var(--surface);
+    font-size: 1.6rem;
+    letter-spacing: 0.04em;
+}
+
+.done-amount {
+    color: var(--yellow);
+    font-size: 3.2rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.done-countdown {
+    color: var(--grey-hairline);
+    font-size: 0.85rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.done-continue-btn {
+    margin-top: var(--space-lg);
+    width: 100%;
+    max-width: 360px;
+    min-height: 64px;
+    background: var(--yellow);
+    color: var(--ink);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 1.05rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: transform var(--speed-fast) ease;
+}
+
+.done-continue-btn:active {
+    transform: scale(0.98);
+}
+
+.done-continue-btn:focus-visible {
+    outline-color: var(--surface);
+}
+
+/* ------------------------------------------------------------
+   STATUS & LOG — desktop-only surfaces (hidden on the kiosk)
+   ------------------------------------------------------------ */
 .status-panel,
 .transaction-log {
     display: none;
@@ -589,28 +927,26 @@ button:focus-visible {
 }
 
 /* ------------------------------------------------------------
-   MODAL — price entry (bottom sheet on kiosk)
+   PRICE ENTRY — full-screen keypad overlay on the kiosk.
+   Price display dominant (yellow on ink), big digits.
    ------------------------------------------------------------ */
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(20, 20, 20, 0.72);
+    background: var(--paper);
     display: none;
-    justify-content: center;
-    align-items: flex-end;
     z-index: 1000;
 }
 
 .modal-overlay.active { display: flex; }
 
 .modal-content {
-    background: var(--surface);
-    border: 1px solid var(--grey-hairline);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: var(--space-lg);
+    background: var(--paper);
     width: 100%;
-    max-width: 100%;
-    max-height: 88dvh;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-lg);
     overflow-y: auto;
 }
 
@@ -619,14 +955,15 @@ button:focus-visible {
     justify-content: space-between;
     align-items: flex-start;
     gap: var(--space-sm);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-lg);
     padding-bottom: var(--space-md);
     border-bottom: 1px solid var(--grey-hairline);
-    min-height: 44px;
+    min-height: 56px;
+    flex-shrink: 0;
 }
 
 .modal-header h2 {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     line-height: 1.25;
     flex: 1;
 }
@@ -638,10 +975,10 @@ button:focus-visible {
     margin-bottom: var(--space-sm);
 }
 
-.modal-item-icon { font-size: 1.6rem; line-height: 1; }
+.modal-item-icon { font-size: 1.8rem; line-height: 1; }
 
 .modal-item-name {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     display: flex;
     align-items: center;
 }
@@ -657,13 +994,14 @@ button:focus-visible {
 }
 
 .modal-item-description {
-    background: var(--paper);
+    background: var(--surface);
     border: 1px solid var(--grey-hairline);
     border-radius: var(--radius-sm);
     padding: var(--space-md);
     color: var(--grey-mid);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     line-height: 1.4;
+    text-align: left;
 }
 
 .modal-close {
@@ -672,8 +1010,8 @@ button:focus-visible {
     color: var(--ink);
     font-size: 1.6rem;
     line-height: 1;
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -687,29 +1025,30 @@ button:focus-visible {
     border-color: var(--ink);
 }
 
+.modal-body { flex-shrink: 0; }
+
 .price-input-section {
     text-align: center;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-lg);
 }
 
 .price-input-section label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--grey-mid);
     margin-bottom: var(--space-sm);
 }
 
+/* Dominant price — yellow on ink (approved high-impact pairing) */
 .price-display {
-    font-size: 2.6rem;
-    line-height: 1.1;
-    color: var(--ink);
-    background: var(--paper);
-    border: 1px solid var(--grey-hairline);
-    border-radius: var(--radius-sm);
-    padding: var(--space-md);
-    margin-bottom: var(--space-md);
+    font-size: 4.2rem;
+    line-height: 1.05;
+    color: var(--yellow);
+    background: var(--ink);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg) var(--space-md);
     font-variant-numeric: tabular-nums;
 }
 
@@ -717,18 +1056,18 @@ button:focus-visible {
 .keypad {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-bottom: var(--space-md);
+    gap: 12px;
+    margin-bottom: var(--space-lg);
 }
 
 .keypad-btn {
     background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--grey-hairline);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     padding: var(--space-sm);
-    font-size: 1.5rem;
-    min-height: 60px;
+    font-size: 2.4rem;
+    min-height: 118px;
     transition: transform var(--speed-fast) ease;
 }
 
@@ -752,16 +1091,18 @@ button:focus-visible {
 
 .modal-footer {
     display: flex;
-    gap: 10px;
+    gap: 12px;
+    margin-top: auto; /* pin to the bottom when content is short */
+    padding-top: var(--space-sm);
 }
 
 .modal-btn {
     flex: 1;
     padding: var(--space-md);
     border-radius: var(--radius-sm);
-    font-size: 1rem;
+    font-size: 1.15rem;
     letter-spacing: 0.06em;
-    min-height: 56px;
+    min-height: 76px;
     transition: transform var(--speed-fast) ease;
 }
 
@@ -792,49 +1133,7 @@ button:focus-visible {
 }
 
 /* ------------------------------------------------------------
-   LOADING OVERLAY — ink field, yellow spinner
-   ------------------------------------------------------------ */
-.loading-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(20, 20, 20, 0.96);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 2000;
-}
-
-.loading-overlay.active { display: flex; }
-
-.loading-content {
-    text-align: center;
-    color: var(--surface);
-    padding: var(--space-lg);
-}
-
-.loading-spinner {
-    width: 56px;
-    height: 56px;
-    border: 4px solid rgba(254, 210, 2, 0.25);
-    border-top-color: var(--yellow);
-    border-radius: 50%;
-    animation: spin 0.9s linear infinite;
-    margin: 0 auto var(--space-xl);
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.loading-text {
-    font-size: 1.05rem;
-    line-height: 1.4;
-    max-width: 30ch;
-    margin: 0 auto;
-}
-
-/* ------------------------------------------------------------
-   TOAST — in-page messages (replaces alert())
+   TOAST — in-page messages (no native dialogs)
    Black panel, white text; yellow square = success/error.
    ------------------------------------------------------------ */
 .toast {
@@ -898,9 +1197,18 @@ button:focus-visible {
 }
 
 /* ============================================================
-   DESKTOP (secondary) — 3-column layout above kiosk width
+   DESKTOP (secondary) — centered single column above kiosk
+   width; same screen flow, status panel + log visible.
    ============================================================ */
 @media (min-width: 721px) {
+    .app-container {
+        max-width: 720px;
+        margin: 0 auto;
+        background: var(--paper);
+        border-left: 1px solid var(--grey-hairline);
+        border-right: 1px solid var(--grey-hairline);
+    }
+
     .header {
         padding: var(--space-lg) var(--space-2xl);
     }
@@ -913,77 +1221,100 @@ button:focus-visible {
     .app-title { font-size: 1.5rem; }
 
     .main-content {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: var(--space-2xl);
         padding: var(--space-2xl);
-        overflow-y: auto;
+        gap: var(--space-lg);
     }
 
-    .cart-panel,
-    .items-panel,
-    .checkout-panel {
+    /* Items screen scrolls as one column; grid sizes naturally */
+    .screen-items { overflow-y: auto; }
+
+    .items-panel {
+        flex: none;
+        overflow: visible;
         padding: var(--space-2xl);
         border-radius: var(--radius-lg);
     }
 
-    .cart-items { max-height: 400px; }
-
-    .item-types-grid { overflow-y: visible; }
+    .item-types-grid {
+        overflow-y: visible;
+        grid-auto-rows: minmax(150px, auto);
+    }
 
     .item-type-btn:hover {
         border-color: var(--ink);
     }
 
-    .checkout-panel {
-        display: block;
+    .cart-list-panel,
+    .pay-card {
+        border-radius: var(--radius-lg);
     }
 
-    .checkout-button-container {
-        margin-bottom: var(--space-2xl);
-    }
-
-    .checkout-btn {
-        padding: 1.5rem;
-        font-size: 1.3rem;
-        min-height: 0;
-    }
+    .cart-list-panel { padding: var(--space-2xl); }
 
     .status-panel,
     .transaction-log {
         display: block;
+        flex-shrink: 0;
     }
+
+    .pay-total-amount { font-size: 3.2rem; }
 
     .toast { top: 104px; }
 
-    .modal-overlay { align-items: center; }
+    /* Keypad reverts to a centered card on desktop */
+    .modal-overlay {
+        background: rgba(20, 20, 20, 0.72);
+        align-items: center;
+        justify-content: center;
+    }
 
     .modal-content {
         width: 92%;
         max-width: 480px;
+        height: auto;
         max-height: 92dvh;
         border-radius: var(--radius-lg);
         padding: var(--space-2xl);
     }
 
-    .modal-header { margin-bottom: var(--space-lg); }
+    .price-display { font-size: 3rem; }
+
+    .keypad-btn {
+        min-height: 64px;
+        font-size: 1.5rem;
+        border-radius: var(--radius-sm);
+    }
+
+    .modal-btn {
+        min-height: 56px;
+        font-size: 1rem;
+    }
+
+    .modal-footer { margin-top: 0; }
 }
 
 /* ============================================================
    TOUCH DEVICE SAFETY (any width)
    ============================================================ */
 @media (hover: none) and (pointer: coarse) {
-    .item-type-btn,
-    .checkout-btn,
-    .keypad-btn,
-    .modal-btn {
-        min-height: 56px;
+    .item-type-btn {
+        min-height: 150px;
     }
 
     .remove-item-btn {
-        min-width: 44px;
-        min-height: 44px;
+        min-width: 52px;
+        min-height: 52px;
     }
+
+    .back-btn,
+    .clear-cart-btn,
+    .modal-close {
+        min-height: 52px;
+    }
+
+    .cart-items::-webkit-scrollbar,
+    .item-types-grid::-webkit-scrollbar,
+    .log-content::-webkit-scrollbar { width: 3px; }
 }
 
 /* ============================================================

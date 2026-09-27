@@ -7,7 +7,7 @@
     <title>HackyPay — Self Checkout</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body data-screen="items">
     <div class="app-container">
         <!-- Header: brand lockup -->
         <header class="header">
@@ -33,55 +33,25 @@
             <span class="font-warning-hint">Tap to dismiss</span>
         </div>
 
-        <!-- Main Content -->
+        <!-- Main Content — one screen visible at a time (SPA state machine in app.js) -->
         <main class="main-content">
-            <!-- Cart -->
-            <section class="cart-panel">
-                <div class="panel-header">
-                    <h2>Shopping Cart</h2>
-                    <button class="clear-cart-btn" id="clearCartBtn" disabled>
-                        Clear Cart
-                    </button>
-                </div>
+            <!-- SCREEN 1: ITEMS (default) — grid fills all space above the bottom bar -->
+            <section class="screen screen-items active" id="screenItems">
+                <div class="items-panel">
+                    <div class="panel-header">
+                        <h2>Select Item Type</h2>
+                    </div>
 
-                <div class="cart-items" id="cartItems">
-                    <div class="empty-cart-message">
-                        <p>Your cart is empty</p>
-                        <p class="empty-cart-subtitle">Add items to get started</p>
+                    <div class="item-types-grid" id="itemTypesGrid">
+                        <!-- Item type buttons will be populated by JavaScript -->
                     </div>
                 </div>
 
-                <div class="cart-summary">
-                    <div class="total-display">
-                        <span class="total-label">Total</span>
-                        <span class="total-amount" id="totalAmount">£0.00</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Item Selection -->
-            <section class="items-panel">
-                <div class="panel-header">
-                    <h2>Select Item Type</h2>
-                </div>
-
-                <div class="item-types-grid" id="itemTypesGrid">
-                    <!-- Item type buttons will be populated by JavaScript -->
-                </div>
-            </section>
-
-            <!-- Checkout & Status -->
-            <section class="checkout-panel">
-                <div class="checkout-button-container">
-                    <button class="checkout-btn" id="checkoutBtn" disabled>
-                        CHECKOUT
-                    </button>
-                </div>
-
+                <!-- Status & log — desktop-only surfaces (hidden on the kiosk) -->
                 <div class="status-panel">
                     <h3>Status</h3>
                     <div class="status-message" id="statusMessage">
-                        👆 Select an item type to add to your cart
+                        Select an item type to add to your cart
                     </div>
                 </div>
 
@@ -92,7 +62,78 @@
                     </div>
                 </div>
             </section>
+
+            <!-- SCREEN 2: CART — review/edit before paying -->
+            <section class="screen screen-cart" id="screenCart">
+                <div class="cart-screen-header">
+                    <button class="back-btn" id="cartBackBtn">← Items</button>
+                    <h2 class="cart-screen-title">Your Cart</h2>
+                    <button class="clear-cart-btn" id="clearCartBtn" disabled>
+                        Clear
+                    </button>
+                </div>
+
+                <div class="cart-list-panel">
+                    <div class="cart-items" id="cartItems">
+                        <div class="empty-cart-message">
+                            <p>Your cart is empty</p>
+                            <p class="empty-cart-subtitle">Add items to get started</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 3: PAYMENT — reassurance while the reader takes payment -->
+            <section class="screen screen-payment" id="screenPayment">
+                <div class="pay-total-panel">
+                    <span class="pay-total-label">Total to Pay</span>
+                    <span class="pay-total-amount" id="payTotal">£0.00</span>
+                    <span class="pay-item-count" id="payItemCount">0 items</span>
+                </div>
+
+                <div class="pay-card pay-waiting" id="payWaiting">
+                    <span class="pay-pulse" aria-hidden="true"></span>
+                    <p class="pay-status" id="payStatus">Contacting card reader...</p>
+                </div>
+
+                <div class="pay-card pay-failure" id="payFailure">
+                    <p class="pay-failure-msg" id="payFailureMsg"></p>
+                    <div class="pay-failure-actions">
+                        <button class="pay-action-btn" id="payRetryBtn">Try Again</button>
+                        <button class="pay-action-btn pay-action-secondary" id="payBackBtn">Back to Items</button>
+                    </div>
+                </div>
+
+                <button class="pay-cancel-btn" id="payCancelBtn">Cancel Payment</button>
+            </section>
+
+            <!-- SCREEN 4: DONE — success, auto-returns to ITEMS -->
+            <section class="screen screen-done" id="screenDone">
+                <div class="done-panel">
+                    <div class="done-mark" aria-hidden="true">
+                        <svg viewBox="0 0 48 48" fill="none">
+                            <path d="M11 25 L20 34 L37 15" stroke="currentColor" stroke-width="7" stroke-linecap="square"></path>
+                        </svg>
+                    </div>
+                    <h2 class="done-title">Payment Successful</h2>
+                    <p class="done-amount" id="doneAmount">£0.00</p>
+                    <p class="done-countdown" id="doneCountdown">Returning to items in 5...</p>
+                    <button class="done-continue-btn" id="doneContinueBtn">Tap to Continue</button>
+                </div>
+            </section>
         </main>
+
+        <!-- Bottom bar — ITEMS & CART screens: live cart summary + checkout -->
+        <div class="bottom-bar is-empty" id="bottomBar">
+            <span class="bar-hint" id="barHint">Add items to get started</span>
+            <button class="cart-summary-btn" id="cartSummaryBtn" aria-label="Review cart">
+                <span class="cart-summary-count" id="cartCount">0 items</span>
+                <span class="cart-summary-total" id="cartTotal">£0.00</span>
+            </button>
+            <button class="checkout-btn" id="checkoutBtn" disabled>
+                CHECKOUT
+            </button>
+        </div>
 
         <!-- Footer tagline -->
         <footer class="footer">
@@ -100,13 +141,13 @@
         </footer>
     </div>
 
-    <!-- Toast (in-page messages; replaces alert()) -->
+    <!-- Toast (in-page messages; no native dialogs) -->
     <div class="toast" id="toast" role="status" aria-live="polite">
         <span class="toast-marker" aria-hidden="true"></span>
         <span class="toast-text" id="toastText"></span>
     </div>
 
-    <!-- Item Input Modal -->
+    <!-- Price Entry — full-screen keypad overlay on the kiosk -->
     <div class="modal-overlay" id="itemModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -140,14 +181,6 @@
                 <button class="modal-btn cancel-btn" id="modalCancel">Cancel</button>
                 <button class="modal-btn add-btn" id="modalAdd">Add to Cart</button>
             </div>
-        </div>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <div class="loading-text" id="loadingText">Processing payment...</div>
         </div>
     </div>
 
