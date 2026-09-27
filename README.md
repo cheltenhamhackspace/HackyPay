@@ -39,7 +39,29 @@ The backend serves the kiosk UI at `http://127.0.0.1:8000/` — no separate fron
 
 - Target resolution is fixed 720×1280 portrait; the UI is portrait-first CSS.
 - Fully offline: the Dunbar Low brand font is self-hosted (`frontend/assets/fonts/`) and there are no CDN requests. If the brand font fails to load, a dismissible warning banner appears under the header.
-- For kiosk boot, point Chromium at the backend address, e.g. `chromium-browser --kiosk http://127.0.0.1:8000`.
+- For kiosk boot, point Chromium at the backend address. Recommended flags for the Pi (GPU rasterisation, no overscroll/history gestures, no crash bubbles):
+  ```bash
+  chromium-browser --kiosk --noerrdialogs --disable-session-crashed-bubble \
+    --enable-gpu-rasterization --ignore-gpu-blocklist \
+    --overscroll-history-navigation=0 --disable-features=Translate \
+    http://127.0.0.1:8000
+  ```
+- Touch behaviour is tuned in the app: vertical-pan-only scroll containers, overscroll containment (no pull-to-refresh / page drift), long-press context menus suppressed, no text selection or tap flash.
+
+### Raspberry Pi setup (automated)
+
+`deploy/pi/setup-kiosk.sh` turns a Raspberry Pi OS (Bookworm+) image into a HackyPay kiosk — boots to console, starts X + Chromium kiosk on tty1 via systemd, forces portrait (rotating X and realigning the touchscreen only if the panel comes up landscape), and runs a Chromium watchdog. The Pi is a thin client — no code checkout needed.
+
+```bash
+scp deploy/pi/setup-kiosk.sh pi@<pi-address>:
+ssh pi@<pi-address>
+sudo ./setup-kiosk.sh http://<backend-ip>:8000
+sudo reboot
+```
+
+- Re-run with a new URL any time (safe/idempotent): `sudo ./setup-kiosk.sh http://<new-url>`
+- If the UI appears upside down: `KIOSK_ROTATE=right sudo ./setup-kiosk.sh <url>` (touch matrix follows)
+- Logs: `journalctl -u hackypay-kiosk -f`
 
 ## API Endpoints
 
