@@ -9,15 +9,17 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 
-# Patterns to identify sensitive data
+# Patterns to identify sensitive data. The sensitive portion is captured in
+# group 1 so _mask_sensitive_data() can replace just that group while the
+# surrounding context (prefixes, keys, quotes) is preserved.
 SENSITIVE_PATTERNS = [
-    r'sup_sk_[a-zA-Z0-9_.\-]+',  # SumUp API tokens (incl. separator chars)
-    r'rdr_[a-zA-Z0-9_.\-]+',     # SumUp reader IDs
-    r'Bearer\s+[a-zA-Z0-9_\-\.]+',  # Bearer tokens
-    r'Authorization:\s*Bearer\s+[^\s]+',  # Authorization headers
-    r'X-API-Key:\s*[^\s]+',  # API key headers
-    r'api_token["\']?\s*[:=]\s*["\'][^"\']+["\']',  # API token assignments
-    r'token["\']?\s*[:=]\s*["\'][^"\']+["\']',  # Generic token assignments
+    r'sup_sk_([a-zA-Z0-9_.\-]+)',  # SumUp API tokens (incl. separator chars)
+    r'rdr_([a-zA-Z0-9_.\-]+)',     # SumUp reader IDs
+    r'Bearer\s+([a-zA-Z0-9_\-\.]+)',  # Bearer tokens
+    r'Authorization:\s*Bearer\s+([^\s]+)',  # Authorization headers
+    r'X-API-Key:\s*([^\s]+)',  # API key headers
+    r'api_token["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # API token assignments
+    r'token["\']?\s*[:=]\s*["\']([^"\']+)["\']',  # Generic token assignments
 ]
 
 class SecurityFilter:
@@ -33,21 +35,16 @@ class SecurityFilter:
             
         sanitized = text
         for pattern in self.patterns:
-            # Replace sensitive data with masked version
-            sanitized = pattern.sub(lambda m: self._mask_sensitive_data(m.group()), sanitized)
+            # Replace the sensitive group with a masked version
+            sanitized = pattern.sub(self._mask_sensitive_data, sanitized)
         
         return sanitized
     
-    def _mask_sensitive_data(self, match: str) -> str:
-        """Mask sensitive data while preserving some context"""
-        if 'sup_sk_' in match.lower():
-            return 'sup_sk_***MASKED***'
-        elif 'rdr_' in match.lower():
-            return 'rdr_***MASKED***'
-        elif 'bearer' in match.lower():
-            return 'Bearer ***MASKED***'
-        else:
-            return '***MASKED***'
+    def _mask_sensitive_data(self, match: "re.Match[str]") -> str:
+        """Replace the sensitive portion (group 1), preserving the rest of the match"""
+        start = match.start(1) - match.start(0)
+        end = match.end(1) - match.start(0)
+        return match.group(0)[:start] + '***MASKED***' + match.group(0)[end:]
     
     def sanitize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively sanitize dictionary data"""

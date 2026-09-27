@@ -1,5 +1,7 @@
 import os
+import re
 import logging
+import warnings
 from pathlib import Path
 from typing import Optional
 from pydantic import field_validator, ValidationError
@@ -27,7 +29,6 @@ class SecureFormatter(logging.Formatter):
         ]
         
         for pattern, replacement in sensitive_patterns:
-            import re
             msg = re.sub(pattern, replacement, msg, flags=re.IGNORECASE)
         
         return msg
@@ -88,7 +89,6 @@ class Settings(BaseSettings):
     @classmethod
     def validate_debug_mode(cls, v):
         if v:
-            import warnings
             warnings.warn(
                 "Debug mode is enabled. This should be disabled in production.",
                 UserWarning
@@ -99,7 +99,6 @@ class Settings(BaseSettings):
     @classmethod
     def validate_cors_origins(cls, v):
         if '*' in v:
-            import warnings
             warnings.warn(
                 "Wildcard CORS origins detected. This should be restricted in production.",
                 UserWarning
