@@ -149,7 +149,7 @@ The backend calls `api.sumup.com:443` — ensure egress is allowed if you run de
 
 ## Releasing
 
-1. Bump `version` in `backend/pyproject.toml`.
+1. Bump `version` in `backend/pyproject.toml` and `backend/app/__init__.py` (reported by `/api/health` and the OpenAPI docs).
 2. Commit the bump, then tag (annotated tag, `v` prefix, matching the pyproject version):
    ```bash
    git tag -a vX.Y.Z -m "Release vX.Y.Z: one-line summary"

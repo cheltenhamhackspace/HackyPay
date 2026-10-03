@@ -21,6 +21,7 @@ from .security import (
     sanitize_request_for_logging, add_security_headers,
     validate_environment_security, SecureLoggerAdapter
 )
+from . import __version__
 from .config import get_settings, SecureFormatter
 from .models import (
     CheckoutRequest, PaymentResponse, HealthCheck,
@@ -67,7 +68,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="HackyPay Self Checkout API",
     description="Secure SumUp-based self checkout system",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
     # Don't publish the API schema to the LAN on a production kiosk
     docs_url="/docs" if settings.debug else None,

@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional
 from decimal import Decimal
 
+from . import __version__
+
 class ItemTypeConfig(BaseModel):
     id: str
     name: str
@@ -68,7 +70,7 @@ class TransactionStatusResponse(BaseModel):
 class HealthCheck(BaseModel):
     status: str
     timestamp: str
-    version: str = "1.0.0"
+    version: str = __version__
 
 class ErrorResponse(BaseModel):
     error: str
