@@ -98,6 +98,7 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
+#   For this project the lockfile IS committed: reproducible builds for a payment kiosk.
 #uv.lock
 
 # poetry
@@ -136,6 +137,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -206,4 +209,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# uv (lockfile is committed: reproducible builds for a payment kiosk)
+# Local tooling / scratch files
+.omo/

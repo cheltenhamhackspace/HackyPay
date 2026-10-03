@@ -1,0 +1,55 @@
+# HackyPay with Docker Compose — the simplest way to self-host.
+#
+#   cp .env.example .env   # then add your SumUp credentials
+#   docker compose up --build
+#
+# For Kubernetes deploys see deploy/k8s/ instead.
+
+services:
+  hackypay:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    # To run a published image instead of building, remove `build` and use:
+    #   image: ghcr.io/cheltenhamhackspace/hackypay:latest    (newest release)
+    #   image: ghcr.io/cheltenhamhackspace/hackypay:1.2.0     (pinned release)
+    image: hackypay:local
+    ports:
+      - "${HACKYPAY_PORT:-8000}:8000"
+    # Every variable in .env is passed to the container. The three required
+    # SumUp credentials are additionally guarded here so `docker compose up`
+    # fails with a clear message instead of a pydantic traceback.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SUMUP_API_TOKEN: ${SUMUP_API_TOKEN:?Set SUMUP_API_TOKEN in .env — see .env.example (starts with sup_sk_)}
+      SUMUP_MERCHANT_CODE: ${SUMUP_MERCHANT_CODE:?Set SUMUP_MERCHANT_CODE in .env — see .env.example}
+      SUMUP_READER_ID: ${SUMUP_READER_ID:?Set SUMUP_READER_ID in .env — see .env.example (starts with rdr_)}
+    restart: unless-stopped
+    # Hardening matches the Kubernetes deployment: non-root, read-only root
+    # filesystem, no capabilities, no privilege escalation.
+    user: "65532:65532"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Distroless image: no curl/wget, so probe with the bundled Python.
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# To customise the kiosk items (names, prices, currency):
+#   1. cp backend/items_config.json ./items_config.json   # then edit it
+#   2. add this under the hackypay service (create the file FIRST — Docker
+#      would otherwise auto-create a directory in its place):
+#        volumes:
+#          - ./items_config.json:/app/items_config.json:ro
+#   3. restart the container, or hot-reload via POST /api/config/reload
+#      using ADMIN_TOKEN as the X-API-Key header.

@@ -22,14 +22,24 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
+        # Matches the distroless nonroot user (uid 65532, has /etc/passwd entry).
+        runAsUser: 65532
+        runAsGroup: 65532
+        # Makes emptyDir volumes (e.g. /tmp) group-writable for 65532.
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: hackypay
           image: ghcr.io/cheltenhamhackspace/hackypay:1.1.1
           imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The app only reads its files at runtime; the one write path
+            # (items config) is guarded and read-only-mounted in k8s anyway.
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           ports:
             - name: http
               containerPort: 8000
