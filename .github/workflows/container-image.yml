@@ -107,11 +107,13 @@ jobs:
       - name: Update image tag in deploy manifest
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          # GHCR paths are lowercase; the repo name may not be.
+          REPO_LC="${GITHUB_REPOSITORY,,}"
           FILE=deploy/k8s/deployment.yaml
-          grep -q "image: ghcr.io/${GITHUB_REPOSITORY}:" "$FILE" || {
+          grep -q "image: ghcr.io/${REPO_LC}:" "$FILE" || {
             echo "::error::image line not found in $FILE"; exit 1
           }
-          sed -i "s|image: ghcr.io/${GITHUB_REPOSITORY}:.*|image: ghcr.io/${GITHUB_REPOSITORY}:${VERSION}|" "$FILE"
+          sed -i "s|image: ghcr.io/${REPO_LC}:.*|image: ghcr.io/${REPO_LC}:${VERSION}|" "$FILE"
           git diff --stat
 
       - name: Commit and push
