@@ -17,13 +17,13 @@ A web-based self-checkout system for Cheltenham Hackspace, using the SumUp reade
 backend/           FastAPI app (package: backend/app), tests, items config
 frontend/          Static kiosk UI (served by the backend, same origin)
 deploy/            Dockerfile + Kubernetes manifests (deploy/k8s/)
-SECURITY-REVIEW.md Security audit report (September 2026)
+compose.yaml       Single-container deployment (Docker Compose) + .env.example
 CONFIGURATION.md   How to configure item types and limits
 ```
 
 ## Backend Setup
 
-Prerequisites: Python 3.10+, [uv](https://docs.astral.sh/uv/), a SumUp merchant account with an API key and card reader.
+Prerequisites: Python 3.13+, [uv](https://docs.astral.sh/uv/), a SumUp merchant account with an API key and card reader.
 
 ```bash
 cd backend
@@ -85,12 +85,45 @@ FastAPI docs (`/docs`, `/redoc`) are available only when `DEBUG=true`.
 - **Environment**: `backend/.env` — see `.env.example`. `ADMIN_TOKEN` (optional) protects the config-reload endpoint.
 - **Item types & price limits**: `backend/items_config.json` — see `CONFIGURATION.md`. In Kubernetes the file is mounted from a ConfigMap.
 
+## Deploying with Docker Compose
+
+The simplest way to self-host HackyPay — one container, no Kubernetes:
+
+```bash
+cp .env.example .env    # then edit .env with your SumUp credentials
+docker compose up --build -d
+```
+
+The kiosk UI and API are served at `http://<host>:8000` — point the
+Raspberry Pi kiosk at that URL (see [Kiosk](#kiosk-raspberry-pi-touch-display-2)).
+`docker compose ps` shows health; the container restarts on failure and
+after reboots (`unless-stopped`).
+
+To customise the kiosk items (names, prices, currency), copy
+`backend/items_config.json` to the repo root, edit it, and uncomment the
+`volumes` block in `compose.yaml` — create the file *before* uncommenting,
+since Docker otherwise auto-creates a directory in its place. Changes apply
+on container restart, or hot-reload via `POST /api/config/reload` with your
+`ADMIN_TOKEN` as the `X-API-Key` header.
+
+To run a published image instead of building locally, remove the `build`
+block in `compose.yaml` and set `image:` to
+`ghcr.io/cheltenhamhackspace/hackypay:latest` (newest release) or a pinned
+`:X.Y.Z`. Running from source needs no registry at all — updates are just
+`git pull && docker compose up --build -d`; CI's automatic image-tag bump
+applies only to the Kubernetes manifest, because that is the one place a
+deployment references registry tags.
+
+The Compose service uses the same hardening as the Kubernetes deployment:
+non-root (uid 65532), read-only root filesystem, no capabilities, and no
+privilege escalation.
+
 ## Deploying on Kubernetes
 
 Images are built automatically by GitHub CI (`.github/workflows/container-image.yml`) and published to GHCR as multi-arch (amd64 + arm64):
 
 - pushes to `main` → `ghcr.io/cheltenhamhackspace/hackypay:main` (+ `:sha-<sha>`)
-- `v*` tags → `ghcr.io/cheltenhamhackspace/hackypay:<version>`
+- `v*` tags → `ghcr.io/cheltenhamhackspace/hackypay:<version>` (+ `:latest`)
 
 > GHCR packages are **private by default** — either flip the package to public in GitHub → Packages settings, or create an `imagePullSecret` (the Deployment has a commented `imagePullSecrets` block ready for it).
 
@@ -125,20 +158,36 @@ The backend calls `api.sumup.com:443` — ensure egress is allowed if you run de
 3. CI builds and publishes multi-arch images:
    - `ghcr.io/cheltenhamhackspace/hackypay:X.Y.Z`
    - `ghcr.io/cheltenhamhackspace/hackypay:X.Y`
-4. Update the image tag in `deploy/k8s/deployment.yaml` to the new version and apply.
+4. CI bumps the image tag in `deploy/k8s/deployment.yaml` automatically (a `github-actions[bot]` commit to main, marked `[skip ci]`) once the multi-arch push succeeds. `git pull`, then apply the manifest to roll out.
 5. Optionally add release notes under GitHub → Releases (the tag already exists there).
 
 Rolling back = pointing the Deployment back at the previous version tag and re-applying.
 
 ## Security
 
-See `SECURITY-REVIEW.md` for the full audit (findings, fixes, accepted risks). Key points:
+Key points:
 
 - SumUp credentials live only in backend env/Secret.
 - Price limits from `items_config.json` are enforced server-side at checkout.
 - Strict CSP, security headers on all responses (including 429/413).
 - Config reload requires an admin token when configured; loopback-only otherwise.
 - Dependencies locked with `uv.lock`.
+
+### Supply chain security
+
+- **Actions pinned by commit SHA** — every GitHub Action in `.github/workflows/` is pinned to a full commit SHA (mutable tags like `@v4` are an injection vector). Dependabot keeps the pins current; the version is noted in a trailing comment.
+- **Base images pinned by digest** — both stages in `deploy/Dockerfile` are pinned to multi-arch image digests: the builder is `ghcr.io/astral-sh/uv:python3.13-trixie-slim`, the runtime is Google's [`gcr.io/distroless/python3-debian13:nonroot`](https://github.com/GoogleContainerTools/distroless) — no shell, no package manager, no pip, with ca-certificates and tzdata included. Neither image can be silently re-pointed upstream. Update with `docker buildx imagetools inspect <image:tag>`, bumping both digests together (the copied venv is tied to the interpreter minor version).
+- **Distroless runtime, least-privilege pod** — the pod runs as uid 65532 (the distroless `nonroot` user, present in `/etc/passwd`) with `readOnlyRootFilesystem: true`, all capabilities dropped, `allowPrivilegeEscalation: false`, and seccomp `RuntimeDefault` (`deploy/k8s/deployment.yaml`). Interactive debugging uses the distroless `debug-nonroot` tag, not a runtime shell.
+- **Lockfile-only installs** — the image is built with `uv sync --frozen`, and CI audits the runtime closure of `uv.lock` with [pip-audit](https://pypi.org/project/pip-audit/) on every push/PR (`audit` job; fails on any known vulnerability).
+- **Image attestations** — pushed images carry SLSA provenance and an in-toto SBOM attestation (inspect with `docker buildx imagetools inspect ghcr.io/cheltenhamhackspace/hackypay:<tag>`).
+- **Least-privilege CI** — the workflow defaults to `contents: read`; only the build job gets `packages: write`, and checkout runs with `persist-credentials: false`.
+- **Automated updates** — [Dependabot](.github/dependabot.yml) opens weekly grouped PRs for GitHub Actions and Python dependencies (reads `uv.lock`).
+
+## AI-assisted development
+
+This project was built with heavy use of LLM-based coding assistants: essentially all of the code was drafted, refactored, and reviewed in collaboration with AI tools rather than written from scratch. Development ran on GLM 5.3 Flash (Z.ai) with max thinking enabled, orchestrated via the OhMyOpenCode agent harness. Human reviewers went through every change, and a separate manual security review was performed on the final result.
+
+If you fork or reuse this code, apply the same scrutiny you would to any AI-generated codebase.
 
 ## License
 
