@@ -191,4 +191,4 @@ If you fork or reuse this code, apply the same scrutiny you would to any AI-gene
 
 ## License
 
-Proprietary software for Cheltenham Hackspace.
+HackyPay is released under the [MIT License](LICENSE).
