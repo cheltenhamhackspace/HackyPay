@@ -73,6 +73,8 @@
    ------------------------------------------------------------ */
 html {
     height: 100%;
+    /* Larger root scale (default 16px → 20px): all rem text sizes up 25% */
+    font-size: 125%;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
