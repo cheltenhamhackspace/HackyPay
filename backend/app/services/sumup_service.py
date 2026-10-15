@@ -1,6 +1,7 @@
+import time
 import requests
 import logging
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 from datetime import datetime
 
 from ..config import get_settings
@@ -26,6 +27,77 @@ class SumUpService:
 
     def _api_url(self, path: str) -> str:
         return f"{self.settings.sumup_api_base_url}{path}"
+
+    # ----------------------------------------------------------------
+    #  Transient-failure retry
+    #  When the reader has been asleep, the first request to SumUp
+    #  often fails (reader-offline 422, connection reset or 5xx) and
+    #  succeeds when repeated seconds later. Retry those cases
+    #  automatically with backoff so the kiosk user doesn't have to
+    #  tap "Try again". Non-transient errors (validation, declined,
+    #  reader busy) are never retried — a retry cannot double-charge
+    #  because the reader takes one transaction at a time and a
+    #  still-active earlier session answers 409, which we keep.
+    # ----------------------------------------------------------------
+    _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+    @staticmethod
+    def _offline_reader_body(response) -> bool:
+        """True when a 422 is the transient 'reader asleep/waking' case."""
+        try:
+            detail = response.json().get("detail", "")
+        except Exception:
+            return False
+        text = detail if isinstance(detail, str) else str(detail)
+        text = text.lower()
+        return "offline" in text or "not ready" in text
+
+    def _backoff(self, attempt: int) -> None:
+        time.sleep(self.settings.sumup_retry_delay * (2 ** attempt))
+
+    def _send_with_retries(
+        self,
+        send: Callable[[], requests.Response],
+        label: str,
+        retry_offline_reader: bool,
+    ) -> requests.Response:
+        """Run a request, retrying transient failures with backoff.
+
+        Retries connection errors/timeouts and 429/5xx always, plus a
+        422 whose body says the reader was offline/not ready when
+        retry_offline_reader is set. Raises the final transport error
+        once retries are exhausted; otherwise returns the last
+        response.
+        """
+        max_retries = max(0, self.settings.sumup_max_retries)
+        for attempt in range(max_retries + 1):
+            try:
+                response = send()
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout) as e:
+                if attempt >= max_retries:
+                    raise
+                logger.warning(
+                    f"{label}: transient {type(e).__name__}, "
+                    f"retrying ({attempt + 1}/{max_retries})"
+                )
+                self._backoff(attempt)
+                continue
+
+            retryable = response.status_code in self._RETRYABLE_STATUS_CODES or (
+                retry_offline_reader
+                and response.status_code == 422
+                and self._offline_reader_body(response)
+            )
+            if retryable and attempt < max_retries:
+                logger.warning(
+                    f"{label}: transient HTTP {response.status_code}, "
+                    f"retrying ({attempt + 1}/{max_retries})"
+                )
+                self._backoff(attempt)
+                continue
+
+            return response
 
     def _merchant_path(self, suffix: str) -> str:
         return f"/merchants/{self.settings.sumup_merchant_code}{suffix}"
@@ -73,10 +145,14 @@ class SumUpService:
         )
 
         try:
-            response = self.session.post(
-                self._reader_url("/checkout"),
-                json=payload,
-                timeout=self.settings.request_timeout,
+            response = self._send_with_retries(
+                lambda: self.session.post(
+                    self._reader_url("/checkout"),
+                    json=payload,
+                    timeout=self.settings.request_timeout,
+                ),
+                label="Checkout request",
+                retry_offline_reader=True,
             )
 
             logger.info(f"SumUp checkout response: HTTP {response.status_code}")
@@ -168,9 +244,13 @@ class SumUpService:
     # ----------------------------------------------------------------
     def check_reader_status(self) -> Dict[str, Any]:
         try:
-            response = self.session.get(
-                self._reader_url("/status"),
-                timeout=10,
+            response = self._send_with_retries(
+                lambda: self.session.get(
+                    self._reader_url("/status"),
+                    timeout=10,
+                ),
+                label="Reader status",
+                retry_offline_reader=False,
             )
 
             if response.status_code == 200:
@@ -223,7 +303,11 @@ class SumUpService:
             )
             params = {"client_transaction_id": client_transaction_id}
 
-            response = self.session.get(url, params=params, timeout=10)
+            response = self._send_with_retries(
+                lambda: self.session.get(url, params=params, timeout=10),
+                label="Transaction lookup",
+                retry_offline_reader=False,
+            )
 
             if response.status_code == 404:
                 logger.info(

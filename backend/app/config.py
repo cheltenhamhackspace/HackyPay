@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     sumup_merchant_code: str
     sumup_reader_id: str
     sumup_api_base_url: str = "https://api.sumup.com/v0.1"
+
+    # Retry of transient SumUp/reader failures (reader waking from sleep,
+    # connection resets, 429/5xx). sumup_max_retries is extra attempts
+    # after the first; sumup_retry_delay backs off ×2 per attempt.
+    sumup_max_retries: int = 2
+    sumup_retry_delay: float = 1.0
     
     # Server Configuration
     host: str = "127.0.0.1"
